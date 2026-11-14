@@ -2,15 +2,11 @@ package org.fossify.phone.fragments
 
 import android.content.Context
 import android.util.AttributeSet
-import com.google.gson.Gson
-import org.fossify.commons.adapters.MyRecyclerViewAdapter
-import org.fossify.commons.extensions.areSystemAnimationsEnabled
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.platform.ComposeView
 import org.fossify.commons.extensions.baseConfig
-import org.fossify.commons.extensions.beGone
-import org.fossify.commons.extensions.beVisible
-import org.fossify.commons.extensions.beVisibleIf
-import org.fossify.commons.extensions.getColorStateList
-import org.fossify.commons.extensions.getContrastColor
 import org.fossify.commons.extensions.getMyContactsCursor
 import org.fossify.commons.extensions.hasPermission
 import org.fossify.commons.helpers.ContactsHelper
@@ -18,59 +14,80 @@ import org.fossify.commons.helpers.Converters
 import org.fossify.commons.helpers.MyContactsContentProvider
 import org.fossify.commons.helpers.PERMISSION_READ_CONTACTS
 import org.fossify.commons.helpers.SMT_PRIVATE
-import org.fossify.commons.helpers.VIEW_TYPE_GRID
 import org.fossify.commons.models.contacts.Contact
-import org.fossify.commons.views.MyGridLayoutManager
-import org.fossify.commons.views.MyLinearLayoutManager
 import org.fossify.phone.R
-import org.fossify.phone.activities.SimpleActivity
-import org.fossify.phone.adapters.ContactsAdapter
-import org.fossify.phone.databinding.FragmentFavoritesBinding
-import org.fossify.phone.databinding.FragmentLettersLayoutBinding
+import org.fossify.phone.compose.screens.FavoritesScreen
+import org.fossify.phone.compose.theme.PhoneTheme
 import org.fossify.phone.extensions.config
 import org.fossify.phone.extensions.handleGenericContactClick
-import org.fossify.phone.extensions.setupWithContacts
 import org.fossify.phone.extensions.startContactDetailsIntent
 import org.fossify.phone.interfaces.RefreshItemsListener
 
-class FavoritesFragment(context: Context, attributeSet: AttributeSet) : MyViewPagerFragment<MyViewPagerFragment.LettersInnerBinding>(context, attributeSet),
+class FavoritesFragment(context: Context, attributeSet: AttributeSet) :
+    MyViewPagerFragment<MyViewPagerFragment.ComposeInnerBinding>(context, attributeSet),
     RefreshItemsListener {
-    private lateinit var binding: FragmentLettersLayoutBinding
-    private var allContacts = ArrayList<Contact>()
+
+    private var favoritesState by mutableStateOf<List<Contact>>(emptyList())
+    private var searchQueryState by mutableStateOf("")
+    private var viewTypeState by mutableStateOf(0)
+    private var columnCountState by mutableStateOf(3)
+    private var hasPermissionState by mutableStateOf(false)
+    private var composeView: ComposeView? = null
 
     override fun onFinishInflate() {
         super.onFinishInflate()
-        binding = FragmentLettersLayoutBinding.bind(FragmentFavoritesBinding.bind(this).favoritesFragment)
-        innerBinding = LettersInnerBinding(binding)
+        innerBinding = ComposeInnerBinding()
+        composeView = findViewById(R.id.compose_view)
     }
 
     override fun setupFragment() {
-        val placeholderResId = if (context.hasPermission(PERMISSION_READ_CONTACTS)) {
-            R.string.no_contacts_found
-        } else {
-            R.string.could_not_access_contacts
+        val act = activity ?: return
+        hasPermissionState = context.hasPermission(PERMISSION_READ_CONTACTS)
+        viewTypeState = act.config.viewType
+        columnCountState = act.config.contactsGridColumnCount
+
+        composeView?.setContent {
+            PhoneTheme(activity = activity) {
+                FavoritesScreen(
+                    favorites = favoritesState,
+                    searchQuery = searchQueryState,
+                    viewType = viewTypeState,
+                    columnCount = columnCountState,
+                    hasPermission = hasPermissionState,
+                    onContactClick = { contact ->
+                        activity?.handleGenericContactClick(contact)
+                    },
+                    onProfileIconClick = { contact ->
+                        activity?.startContactDetailsIntent(contact)
+                    },
+                    onRequestPermissionClick = {
+                        requestReadContactsPermission()
+                    }
+                )
+            }
         }
 
-        binding.fragmentPlaceholder.text = context.getString(placeholderResId)
-        binding.fragmentPlaceholder2.beGone()
+        refreshItems()
     }
 
     override fun setupColors(textColor: Int, primaryColor: Int, properPrimaryColor: Int) {
-        binding.apply {
-            fragmentPlaceholder.setTextColor(textColor)
-            (fragmentList.adapter as? MyRecyclerViewAdapter)?.updateTextColor(textColor)
-
-            letterFastscroller.textColor = textColor.getColorStateList()
-            letterFastscroller.pressedTextColor = properPrimaryColor
-            letterFastscrollerThumb.setupWithFastScroller(letterFastscroller)
-            letterFastscrollerThumb.textColor = properPrimaryColor.getContrastColor()
-            letterFastscrollerThumb.thumbColor = properPrimaryColor.getColorStateList()
-        }
+        // Handled reactively by Compose PhoneTheme
     }
 
     override fun refreshItems(invalidate: Boolean, callback: (() -> Unit)?) {
+        val act = activity ?: return
+        hasPermissionState = context.hasPermission(PERMISSION_READ_CONTACTS)
+        viewTypeState = act.config.viewType
+        columnCountState = act.config.contactsGridColumnCount
+
+        if (!hasPermissionState) {
+            favoritesState = emptyList()
+            callback?.invoke()
+            return
+        }
+
         ContactsHelper(context).getContacts(showOnlyContactsWithNumbers = true) { contacts ->
-            allContacts = contacts
+            val allContacts = ArrayList(contacts)
 
             if (SMT_PRIVATE !in context.baseConfig.ignoredContactSources) {
                 val privateCursor = context?.getMyContactsCursor(favoritesOnly = true, withPhoneNumbersOnly = true)
@@ -82,144 +99,50 @@ class FavoritesFragment(context: Context, attributeSet: AttributeSet) : MyViewPa
                     allContacts.sort()
                 }
             }
-            val favorites = contacts.filter { it.starred == 1 } as ArrayList<Contact>
 
-            allContacts = if (activity!!.config.isCustomOrderSelected) {
+            val favorites = allContacts.filter { it.starred == 1 }
+            val sortedFavorites = if (act.config.isCustomOrderSelected) {
                 sortByCustomOrder(favorites)
             } else {
                 favorites
             }
 
-            activity?.runOnUiThread {
-                gotContacts(allContacts)
+            act.runOnUiThread {
+                favoritesState = sortedFavorites
                 callback?.invoke()
             }
         }
     }
 
-    private fun gotContacts(contacts: ArrayList<Contact>) {
-        setupLetterFastScroller(contacts)
-        binding.apply {
-            if (contacts.isEmpty()) {
-                fragmentPlaceholder.beVisible()
-                fragmentList.beGone()
-            } else {
-                fragmentPlaceholder.beGone()
-                fragmentList.beVisible()
-
-                updateListAdapter()
-            }
-        }
-    }
-
-    private fun updateListAdapter() {
-        val viewType = context.config.viewType
-        setViewType(viewType)
-
-        val currAdapter = binding.fragmentList.adapter as ContactsAdapter?
-        if (currAdapter == null) {
-            ContactsAdapter(
-                activity = activity as SimpleActivity,
-                contacts = allContacts,
-                recyclerView = binding.fragmentList,
-                refreshItemsListener = this,
-                viewType = viewType,
-                showDeleteButton = false,
-                enableDrag = true,
-                itemClick = {
-                    activity?.handleGenericContactClick(it as Contact)
-                },
-                profileIconClick = {
-                    activity?.startContactDetailsIntent(it as Contact)
-                }).apply {
-                binding.fragmentList.adapter = this
-
-                onDragEndListener = {
-                    val adapter = binding.fragmentList.adapter
-                    if (adapter is ContactsAdapter) {
-                        val items = adapter.contacts
-                        saveCustomOrderToPrefs(items)
-                        setupLetterFastScroller(items)
-                    }
-                }
-
-                onSpanCountListener = { newSpanCount ->
-                    context.config.contactsGridColumnCount = newSpanCount
-                }
-            }
-
-            if (context.areSystemAnimationsEnabled) {
-                binding.fragmentList.scheduleLayoutAnimation()
-            }
-        } else {
-            currAdapter.viewType = viewType
-            currAdapter.updateItems(allContacts)
-        }
-    }
-
     fun columnCountChanged() {
-        (binding.fragmentList.layoutManager as? MyGridLayoutManager)?.spanCount = context!!.config.contactsGridColumnCount
-        binding.fragmentList.adapter?.apply {
-            notifyItemRangeChanged(0, allContacts.size)
-        }
+        columnCountState = context.config.contactsGridColumnCount
     }
 
-    private fun sortByCustomOrder(favorites: List<Contact>): ArrayList<Contact> {
-        val favoritesOrder = activity!!.config.favoritesContactsOrder
-
+    private fun sortByCustomOrder(favorites: List<Contact>): List<Contact> {
+        val favoritesOrder = activity?.config?.favoritesContactsOrder.orEmpty()
         if (favoritesOrder.isEmpty()) {
-            return ArrayList(favorites)
+            return favorites
         }
 
         val orderList = Converters().jsonToStringList(favoritesOrder)
         val map = orderList.withIndex().associate { it.value to it.index }
-        val sorted = favorites.sortedBy { map[it.contactId.toString()] }
-
-        return ArrayList(sorted)
-    }
-
-    private fun saveCustomOrderToPrefs(items: List<Contact>) {
-        activity?.apply {
-            val orderIds = items.map { it.contactId }
-            val orderGsonString = Gson().toJson(orderIds)
-            config.favoritesContactsOrder = orderGsonString
-            allContacts = ArrayList(items)
-        }
-    }
-
-    private fun setupLetterFastScroller(contacts: List<Contact>) {
-        binding.letterFastscroller.setupWithContacts(binding.fragmentList, contacts)
+        return favorites.sortedBy { map[it.contactId.toString()] }
     }
 
     override fun onSearchClosed() {
-        binding.fragmentPlaceholder.beVisibleIf(allContacts.isEmpty())
-        (binding.fragmentList.adapter as? ContactsAdapter)?.updateItems(allContacts)
-        setupLetterFastScroller(allContacts)
+        searchQueryState = ""
     }
 
     override fun onSearchQueryChanged(text: String) {
-        val fixedText = text.trim().replace("\\s+".toRegex(), " ")
-        val contacts = allContacts.filter {
-            it.name.contains(fixedText, true) || (text.toLongOrNull() != null && it.doesContainPhoneNumber(fixedText))
-        }.sortedByDescending {
-            it.name.startsWith(fixedText, true)
-        }.toMutableList() as ArrayList<Contact>
-
-        binding.fragmentPlaceholder.beVisibleIf(contacts.isEmpty())
-        (binding.fragmentList.adapter as? ContactsAdapter)?.updateItems(contacts, fixedText)
-        setupLetterFastScroller(contacts)
+        searchQueryState = text
     }
 
-    private fun setViewType(viewType: Int) {
-        val spanCount = context.config.contactsGridColumnCount
-
-        val layoutManager = if (viewType == VIEW_TYPE_GRID) {
-            binding.letterFastscroller.beGone()
-            MyGridLayoutManager(context, spanCount)
-        } else {
-            binding.letterFastscroller.beVisible()
-            MyLinearLayoutManager(context)
+    private fun requestReadContactsPermission() {
+        activity?.handlePermission(PERMISSION_READ_CONTACTS) { granted ->
+            hasPermissionState = granted
+            if (granted) {
+                refreshItems()
+            }
         }
-        binding.fragmentList.layoutManager = layoutManager
     }
 }

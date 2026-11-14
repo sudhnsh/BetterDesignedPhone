@@ -2,9 +2,10 @@ package org.fossify.phone.helpers
 
 import org.fossify.commons.helpers.TAB_CALL_HISTORY
 import org.fossify.commons.helpers.TAB_CONTACTS
-import org.fossify.commons.helpers.TAB_FAVORITES
 
 // shared prefs
+const val debugMode = true
+const val DEBUG_MODE = true
 const val SPEED_DIAL = "speed_dial"
 const val REMEMBER_SIM_PREFIX = "remember_sim_"
 const val GROUP_SUBSEQUENT_CALLS = "group_subsequent_calls"
@@ -20,9 +21,11 @@ const val DIALPAD_BEEPS = "dialpad_beeps"
 const val HIDE_DIALPAD_NUMBERS = "hide_dialpad_numbers"
 const val ALWAYS_SHOW_FULLSCREEN = "always_show_fullscreen"
 
-const val ALL_TABS_MASK = TAB_CONTACTS or TAB_FAVORITES or TAB_CALL_HISTORY
+const val TAB_DIALPAD = 8
 
-val tabsList = arrayListOf(TAB_CONTACTS, TAB_FAVORITES, TAB_CALL_HISTORY)
+const val ALL_TABS_MASK = TAB_CALL_HISTORY or TAB_CONTACTS or TAB_DIALPAD
+
+val tabsList = arrayListOf(TAB_CALL_HISTORY, TAB_CONTACTS, TAB_DIALPAD)
 
 private const val PATH = "org.fossify.phone.action."
 const val ACCEPT_CALL = PATH + "ACCEPT_CALL"

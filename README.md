@@ -1,34 +1,40 @@
-# Fossify Phone
+# APhone (fossify fork)
+
 <img alt="Logo" src="graphics/icon.webp" width="120" />
 
-<a href='https://play.google.com/store/apps/details?id=org.fossify.phone'><img alt='Get it on Google Play' src='https://play.google.com/intl/en_us/badges/static/images/badges/en_badge_web_generic.png' height=80/></a> <a href="https://f-droid.org/packages/org.fossify.phone/"><img src="https://fdroid.gitlab.io/artwork/badge/get-it-on-en.svg" alt="Get it on F-Droid" height=80/></a> <a href="https://apt.izzysoft.de/fdroid/index/apk/org.fossify.phone"><img src="https://gitlab.com/IzzyOnDroid/repo/-/raw/master/assets/IzzyOnDroid.png" alt="Get it on IzzyOnDroid" height=80/></a>
+**APhone** is a modern, privacy-first Android dialer and phone application, developed as a design-focused **fork of Fossify Phone**.
 
-Empower your calls, and safeguard your data. Fossify Phone redefines the mobile app experience with unmatched privacy and efficiency. Free from ads and intrusive permissions, it's designed for seamless and secure everyday communication.
+All the robust, battle-tested backend architecture that Fossify provides—telephony services, Telecom framework integration, SIM management, call handling, private contacts storage, and permissions—remains completely intact. This fork fundamentally transforms the **design, user experience, and overall UI structure**, rebuilding the entire front-end in **Jetpack Compose with Material 3**.
 
-📱 **YOUR PRIVACY, OUR PRIORITY:**  
-Welcome to the Fossify Phone App, where your digital privacy is paramount. Switch to a mobile experience that respects your data, ensuring your personal information remains secure and private.
+---
 
-🚀 **SEAMLESS PERFORMANCE:**  
-The Fossify Phone App offers a fluid and responsive mobile interface, enhancing your phone's performance while safeguarding your privacy. Experience a lag-free, smooth user experience, optimized for efficiency and speed.
+## 🎨 What Changes in this Fork
 
-🌐 **OPEN-SOURCE ASSURANCE:**  
-With the Fossify Phone App, transparency is at your fingertips. Built on an open-source foundation, our app allows you to review our code on GitHub, fostering trust and a community committed to privacy.
+While every backend component from Fossify is retained, the user-facing interface and navigation structure are re-engineered from the ground up:
 
-🖼️ **TAILOR-MADE CUSTOMIZATION:**  
-Customize your mobile experience with the Fossify Phone App. Adjust your app settings for a personalized interface, from thematic designs to functional preferences. Enjoy a user interface that's intuitive and uniquely yours.
+- **100% Declarative UI with Jetpack Compose**: Replaced legacy XML layouts and ViewPagers in `MainActivity` with Material 3 Jetpack Compose.
+- **Streamlined 3-Tab Architecture**:
+  1. **Call**: Recents and call log with call type indicators, durations, and one-tap calling.
+  2. **Contacts**: Full contacts directory with **Favourites pinned as a horizontal carousel** at the top.
+  3. **Keypad**: Modern numeric dialpad with haptic feedback, fixed number repetition, secret code support (`*#06#` for instant IMEI display), and an uncluttered top bar.
+- **Unified Search Experience**: Tapping search opens a dedicated search screen displaying matching **Contacts first**, followed by matching **Call History**, with automatic dismissal when switching tabs.
+- **Modern Material 3 Menus & Dialogs**:
+  - Three-dots overflow menu with 20.dp rounded corners, dark theme container styling (`#1E1E22`), and crisp vector icons.
+  - Native Compose `AlertDialog` confirmation dialogs with circular icon badges and styled action buttons.
+  - Cleaned-up top bar: Sort by and Filter icons removed from the header and neatly housed inside the three-dots menu.
+- **Edge-to-Edge & System Insets**: Native support for status bars, navigation bars, gesture navigation pills, and IME software keyboards across all screens.
+- **Centralized Design System**: Dedicated [Color.kt](app/src/main/kotlin/org/fossify/phone/compose/theme/Color.kt) palette and dynamic luminance-based theme detection in [Theme.kt](app/src/main/kotlin/org/fossify/phone/compose/theme/Theme.kt).
 
-🔋 **EFFICIENT RESOURCE MANAGEMENT:**  
-The Fossify Phone App is designed for optimal resource usage, contributing to extended battery life. It's light on your phone's resources, ensuring your device runs efficiently with minimized battery drain.
+---
 
-Download the Fossify Phone App now and step into a mobile world where privacy seamlessly blends with functionality. Your journey towards a safer, personalized mobile experience starts here.
+## 📱 Architecture & Backend Continuity
 
-➡️ Explore more Fossify apps: https://www.fossify.org<br>
-➡️ Open-Source Code: https://www.github.com/FossifyOrg<br>
-➡️ Join the community on Reddit: https://www.reddit.com/r/Fossify<br>
-➡️ Connect on Telegram: https://t.me/Fossify
+APhone preserves the core telephony engine from Fossify:
+- `CallService` & Telecom subsystem integration
+- `CallNotificationManager` and heads-up call alerts
+- `RecentsHelper` & Call log database operations
+- `ContactsHelper` & Android Contacts Provider sync
+- `SimpleCallScreeningService` for call blocking and spam filtering
+- Offline and private contacts management
 
-<div align="center">
-<img alt="App image" src="fastlane/metadata/android/en-US/images/phoneScreenshots/1_en-US.png" width="30%">
-<img alt="App image" src="fastlane/metadata/android/en-US/images/phoneScreenshots/2_en-US.png" width="30%">
-<img alt="App image" src="fastlane/metadata/android/en-US/images/phoneScreenshots/3_en-US.png" width="30%">
-</div>
+For comprehensive technical status, file mappings, and modernization roadmap, see **[STATUS.md](STATUS.md)**.

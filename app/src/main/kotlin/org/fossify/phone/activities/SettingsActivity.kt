@@ -5,6 +5,7 @@ import android.net.Uri
 import android.os.Bundle
 import android.view.Menu
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.graphics.ColorUtils
 import kotlinx.serialization.SerializationException
 import kotlinx.serialization.json.Json
 import org.fossify.commons.activities.ManageBlockedNumbersActivity
@@ -40,13 +41,22 @@ import org.fossify.phone.dialogs.ManageVisibleTabsDialog
 import org.fossify.phone.extensions.canLaunchAccountsConfiguration
 import org.fossify.phone.extensions.config
 import org.fossify.phone.extensions.launchAccountsConfiguration
+import org.fossify.phone.helpers.AppIconHelper
 import org.fossify.phone.helpers.RecentsHelper
+import org.fossify.phone.helpers.TAB_DIALPAD
 import org.fossify.phone.models.RecentCall
 import java.util.Locale
 import kotlin.system.exitProcess
 
 class SettingsActivity : SimpleActivity() {
     companion object {
+        private const val THEME_SYSTEM = 0
+        private const val THEME_LIGHT = 1
+        private const val THEME_DARK = 2
+
+        private const val ICON_DARK_ID = 0
+        private const val ICON_LIGHT_ID = 1
+
         private const val CALL_HISTORY_FILE_TYPE = "application/json"
         private val IMPORT_CALL_HISTORY_FILE_TYPES = buildList {
             add("application/json")
@@ -91,7 +101,8 @@ class SettingsActivity : SimpleActivity() {
         super.onResume()
         setupTopAppBar(binding.settingsAppbar, NavigationIcon.Arrow)
 
-        setupCustomizeColors()
+        setupTheme()
+        setupAppIcon()
         setupUseEnglish()
         setupLanguage()
         setupManageBlockedNumbers()
@@ -118,7 +129,7 @@ class SettingsActivity : SimpleActivity() {
 
         binding.apply {
             arrayOf(
-                settingsColorCustomizationSectionLabel,
+                settingsThemeSectionLabel,
                 settingsGeneralSettingsLabel,
                 settingsStartupLabel,
                 settingsCallsLabel,
@@ -151,9 +162,82 @@ class SettingsActivity : SimpleActivity() {
         }
     }
 
-    private fun setupCustomizeColors() {
-        binding.settingsColorCustomizationHolder.setOnClickListener {
-            startCustomizationActivity()
+    private fun setupTheme() {
+        binding.settingsTheme.text = getThemeText()
+        binding.settingsThemeHolder.setOnClickListener {
+            val items = arrayListOf(
+                RadioItem(THEME_SYSTEM, getString(R.string.theme_system)),
+                RadioItem(THEME_LIGHT, getString(R.string.theme_light)),
+                RadioItem(THEME_DARK, getString(R.string.theme_dark))
+            )
+
+            RadioGroupDialog(this@SettingsActivity, items, getCurrentThemeId()) {
+                val selected = it as Int
+                when (selected) {
+                    THEME_SYSTEM -> {
+                        baseConfig.isSystemThemeEnabled = true
+                    }
+                    THEME_LIGHT -> {
+                        baseConfig.isSystemThemeEnabled = false
+                        baseConfig.backgroundColor = 0xFFFFFFFF.toInt()
+                        baseConfig.textColor = 0xFF1C1C1E.toInt()
+                    }
+                    THEME_DARK -> {
+                        baseConfig.isSystemThemeEnabled = false
+                        baseConfig.backgroundColor = 0xFF111111.toInt()
+                        baseConfig.textColor = 0xFFFFFFFF.toInt()
+                    }
+                }
+                binding.settingsTheme.text = getThemeText()
+                recreate()
+            }
+        }
+    }
+
+    private fun getCurrentThemeId(): Int {
+        return if (baseConfig.isSystemThemeEnabled) {
+            THEME_SYSTEM
+        } else if (ColorUtils.calculateLuminance(baseConfig.backgroundColor) > 0.5) {
+            THEME_LIGHT
+        } else {
+            THEME_DARK
+        }
+    }
+
+    private fun getThemeText(): String {
+        return when (getCurrentThemeId()) {
+            THEME_LIGHT -> getString(R.string.theme_light)
+            THEME_DARK -> getString(R.string.theme_dark)
+            else -> getString(R.string.theme_system)
+        }
+    }
+
+    private fun setupAppIcon() {
+        binding.settingsAppIcon.text = getAppIconText()
+        binding.settingsAppIconHolder.setOnClickListener {
+            val items = arrayListOf(
+                RadioItem(ICON_DARK_ID, getString(R.string.app_icon_dark)),
+                RadioItem(ICON_LIGHT_ID, getString(R.string.app_icon_light))
+            )
+
+            RadioGroupDialog(this@SettingsActivity, items, getCurrentIconId()) {
+                val selected = it as Int
+                val icon = if (selected == ICON_LIGHT_ID) AppIconHelper.ICON_LIGHT else AppIconHelper.ICON_DARK
+                AppIconHelper.setAppIcon(this, icon)
+                binding.settingsAppIcon.text = getAppIconText()
+            }
+        }
+    }
+
+    private fun getCurrentIconId(): Int {
+        return if (AppIconHelper.getCurrentIcon(this) == AppIconHelper.ICON_LIGHT) ICON_LIGHT_ID else ICON_DARK_ID
+    }
+
+    private fun getAppIconText(): String {
+        return if (getCurrentIconId() == ICON_LIGHT_ID) {
+            getString(R.string.app_icon_light)
+        } else {
+            getString(R.string.app_icon_dark)
         }
     }
 
@@ -232,9 +316,9 @@ class SettingsActivity : SimpleActivity() {
         binding.settingsDefaultTab.text = getDefaultTabText()
         binding.settingsDefaultTabHolder.setOnClickListener {
             val items = arrayListOf(
+                RadioItem(TAB_CALL_HISTORY, getString(R.string.tab_call)),
                 RadioItem(TAB_CONTACTS, getString(R.string.contacts_tab)),
-                RadioItem(TAB_FAVORITES, getString(R.string.favorites_tab)),
-                RadioItem(TAB_CALL_HISTORY, getString(R.string.call_history_tab)),
+                RadioItem(TAB_DIALPAD, getString(R.string.tab_keypad)),
                 RadioItem(TAB_LAST_USED, getString(R.string.last_used_tab))
             )
 
@@ -247,9 +331,9 @@ class SettingsActivity : SimpleActivity() {
 
     private fun getDefaultTabText() = getString(
         when (baseConfig.defaultTab) {
+            TAB_CALL_HISTORY -> R.string.tab_call
             TAB_CONTACTS -> R.string.contacts_tab
-            TAB_FAVORITES -> R.string.favorites_tab
-            TAB_CALL_HISTORY -> R.string.call_history_tab
+            TAB_DIALPAD -> R.string.tab_keypad
             else -> R.string.last_used_tab
         }
     )

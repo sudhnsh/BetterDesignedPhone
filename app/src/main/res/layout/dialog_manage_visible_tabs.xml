@@ -14,6 +14,14 @@
         android:paddingEnd="@dimen/activity_margin">
 
         <org.fossify.commons.views.MyAppCompatCheckbox
+            android:id="@+id/manage_visible_tabs_call_history"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:paddingTop="@dimen/activity_margin"
+            android:paddingBottom="@dimen/activity_margin"
+            android:text="@string/tab_call" />
+
+        <org.fossify.commons.views.MyAppCompatCheckbox
             android:id="@+id/manage_visible_tabs_contacts"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
@@ -22,20 +30,12 @@
             android:text="@string/contacts_tab" />
 
         <org.fossify.commons.views.MyAppCompatCheckbox
-            android:id="@+id/manage_visible_tabs_favorites"
+            android:id="@+id/manage_visible_tabs_dialpad"
             android:layout_width="match_parent"
             android:layout_height="wrap_content"
             android:paddingTop="@dimen/activity_margin"
             android:paddingBottom="@dimen/activity_margin"
-            android:text="@string/favorites" />
-
-        <org.fossify.commons.views.MyAppCompatCheckbox
-            android:id="@+id/manage_visible_tabs_call_history"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingTop="@dimen/activity_margin"
-            android:paddingBottom="@dimen/activity_margin"
-            android:text="@string/call_history_tab" />
+            android:text="@string/tab_keypad" />
 
     </LinearLayout>
 </ScrollView>

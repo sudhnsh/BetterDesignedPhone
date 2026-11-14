@@ -5,90 +5,89 @@ import android.app.Activity
 import android.content.Intent
 import android.content.pm.ShortcutInfo
 import android.content.res.Configuration
-import android.graphics.drawable.Drawable
 import android.graphics.drawable.Icon
 import android.graphics.drawable.LayerDrawable
 import android.os.Bundle
-import android.os.Handler
-import android.provider.Settings
-import android.widget.ImageView
-import android.widget.TextView
+import android.provider.Telephony
+import android.telephony.TelephonyManager
 import android.widget.Toast
-import androidx.viewpager.widget.ViewPager
-import com.google.android.material.snackbar.Snackbar
-import me.grantland.widget.AutofitHelper
-import org.fossify.commons.dialogs.ChangeViewTypeDialog
+import androidx.activity.compose.setContent
+import androidx.activity.enableEdgeToEdge
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
+import androidx.core.net.toUri
 import org.fossify.commons.dialogs.ConfirmationDialog
-import org.fossify.commons.dialogs.PermissionRequiredDialog
-import org.fossify.commons.dialogs.RadioGroupDialog
 import org.fossify.commons.extensions.*
 import org.fossify.commons.helpers.*
 import org.fossify.commons.models.FAQItem
-import org.fossify.commons.models.RadioItem
 import org.fossify.commons.models.contacts.Contact
 import org.fossify.phone.BuildConfig
 import org.fossify.phone.R
-import org.fossify.phone.adapters.ViewPagerAdapter
-import org.fossify.phone.databinding.ActivityMainBinding
+import org.fossify.phone.compose.screens.MainScreen
+import org.fossify.phone.compose.theme.PhoneTheme
 import org.fossify.phone.dialogs.ChangeSortingDialog
 import org.fossify.phone.dialogs.FilterContactSourcesDialog
+import org.fossify.phone.extensions.areMultipleSIMsAvailable
 import org.fossify.phone.extensions.clearMissedCalls
 import org.fossify.phone.extensions.config
 import org.fossify.phone.extensions.handleFullScreenNotificationsPermission
+import org.fossify.phone.extensions.handleGenericContactClick
 import org.fossify.phone.extensions.launchCreateNewContactIntent
-import org.fossify.phone.fragments.ContactsFragment
-import org.fossify.phone.fragments.FavoritesFragment
-import org.fossify.phone.fragments.MyViewPagerFragment
-import org.fossify.phone.fragments.RecentsFragment
+import org.fossify.phone.extensions.startAddContactIntent
+import org.fossify.phone.extensions.startCallWithConfirmationCheck
+import org.fossify.phone.extensions.startContactDetailsIntent
+import org.fossify.phone.helpers.DebugContactsHelper
 import org.fossify.phone.helpers.OPEN_DIAL_PAD_AT_LAUNCH
 import org.fossify.phone.helpers.RecentsHelper
+import org.fossify.phone.helpers.TAB_DIALPAD
+import org.fossify.phone.helpers.debugMode
 import org.fossify.phone.helpers.tabsList
+import org.fossify.phone.models.CallLogItem
 import org.fossify.phone.models.Events
+import org.fossify.phone.models.RecentCall
+import org.fossify.phone.models.SpeedDial
 import org.greenrobot.eventbus.EventBus
 import org.greenrobot.eventbus.Subscribe
 import org.greenrobot.eventbus.ThreadMode
 
 class MainActivity : SimpleActivity() {
-    override var isSearchBarEnabled = true
-    
-    private val binding by viewBinding(ActivityMainBinding::inflate)
 
     private var launchedDialer = false
-    private var storedShowTabs = 0
-    private var storedFontSize = 0
-    private var storedStartNameWithSurname = false
     var cachedContacts = ArrayList<Contact>()
+    private var recentsHelper: RecentsHelper? = null
+
+    // Compose Reactive State
+    private var selectedTabState by mutableIntStateOf(0)
+    private var isSearchActiveState by mutableStateOf(false)
+    private var searchQueryState by mutableStateOf("")
+    private var recentsState by mutableStateOf<List<CallLogItem>>(emptyList())
+    private var contactsState by mutableStateOf<List<Contact>>(emptyList())
+    private var favoritesState by mutableStateOf<List<Contact>>(emptyList())
+    private var speedDialState by mutableStateOf<List<SpeedDial>>(emptyList())
+    private var dialedNumberState by mutableStateOf("")
+    private var showImeiDialogState by mutableStateOf(false)
+    private var hasCallLogPermissionState by mutableStateOf(false)
+    private var hasContactsPermissionState by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        setContentView(binding.root)
+        enableEdgeToEdge()
+        recentsHelper = RecentsHelper(this)
         appLaunched(BuildConfig.APPLICATION_ID)
-        setupOptionsMenu()
-        refreshMenuItems()
-        setupEdgeToEdge(padBottomImeAndSystem = listOf(binding.mainTabsHolder))
-
         EventBus.getDefault().register(this)
+
         launchedDialer = savedInstanceState?.getBoolean(OPEN_DIAL_PAD_AT_LAUNCH) ?: false
+        selectedTabState = if (config.openDialPadAtLaunch && !launchedDialer) {
+            launchedDialer = true
+            2
+        } else {
+            getDefaultTab()
+        }
 
         if (isDefaultDialer()) {
-            checkContactPermissions()
-
-            if (!config.wasOverlaySnackbarConfirmed && !Settings.canDrawOverlays(this)) {
-                val snackbar = Snackbar.make(
-                    binding.mainHolder,
-                    R.string.allow_displaying_over_other_apps,
-                    Snackbar.LENGTH_INDEFINITE
-                ).setAction(R.string.ok) {
-                    config.wasOverlaySnackbarConfirmed = true
-                    startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION))
-                }
-
-                snackbar.setBackgroundTint(getProperBackgroundColor().darkenColor())
-                snackbar.setTextColor(getProperTextColor())
-                snackbar.setActionTextColor(getProperTextColor())
-                snackbar.show()
-            }
-
+            checkPermissions()
             handleFullScreenNotificationsPermission { granted ->
                 if (!granted) {
                     toast(org.fossify.commons.R.string.notifications_disabled)
@@ -102,66 +101,144 @@ class MainActivity : SimpleActivity() {
             setDefaultCallerIdApp()
         }
 
-        setupTabs()
         Contact.sorting = config.sorting
+        handleDialIntent(intent)
+
+        setContent {
+            PhoneTheme(activity = this) {
+                MainScreen(
+                    initialTab = selectedTabState,
+                    searchQuery = searchQueryState,
+                    onSearchQueryChange = { query ->
+                        searchQueryState = query
+                    },
+                    isSearchActive = isSearchActiveState,
+                    onSearchActiveChange = { active ->
+                        isSearchActiveState = active
+                    },
+                    // Recents
+                    recents = recentsState,
+                    hasCallLogPermission = hasCallLogPermissionState,
+                    onCallClick = { recentCall ->
+                        startCallWithConfirmationCheck(recentCall.phoneNumber, recentCall.name)
+                    },
+                    onRecentProfileClick = { recentCall ->
+                        val contact = findContactByCall(recentCall)
+                        if (contact != null) {
+                            startContactDetailsIntent(contact)
+                        } else {
+                            startAddContactIntent(recentCall.phoneNumber)
+                        }
+                    },
+                    onDeleteRecentCall = { recentCall ->
+                        recentsState = recentsState.filter { (it as? RecentCall)?.id != recentCall.id }
+                        recentsHelper?.removeRecentCalls(listOf(recentCall.id)) {}
+                    },
+                    onSendSms = { number ->
+                        launchSendSMSIntent(number)
+                    },
+                    onRequestCallLogPermission = {
+                        requestCallLogPermission()
+                    },
+                    onClearCallHistory = {
+                        recentsHelper?.removeAllRecentCalls(this) {
+                            runOnUiThread {
+                                refreshRecents()
+                            }
+                        }
+                    },
+                    // Contacts
+                    contacts = contactsState,
+                    favorites = favoritesState,
+                    hasContactsPermission = hasContactsPermissionState,
+                    onContactClick = { contact ->
+                        handleGenericContactClick(contact)
+                    },
+                    onContactProfileClick = { contact ->
+                        startContactDetailsIntent(contact)
+                    },
+                    onCreateContactClick = {
+                        launchCreateNewContactIntent()
+                    },
+                    onRequestContactsPermission = {
+                        requestContactsPermission()
+                    },
+                    onSortClick = {
+                        showSortingDialog()
+                    },
+                    onFilterClick = {
+                        showFilterDialog()
+                    },
+                    // Keypad
+                    dialedNumber = dialedNumberState,
+                    onAppendChar = { char ->
+                        appendDialpadChar(char)
+                    },
+                    onDeleteChar = {
+                        if (dialedNumberState.isNotEmpty()) {
+                            dialedNumberState = dialedNumberState.dropLast(1)
+                        }
+                    },
+                    onClearAllDialed = {
+                        dialedNumberState = ""
+                    },
+                    onSetDialedNumber = { number ->
+                        setDialedNumber(number)
+                    },
+                    speedDialValues = speedDialState,
+                    onDialpadCallClick = { number, name ->
+                        handleDialpadCall(number, name)
+                    },
+                    onDialpadCallWithSimSelector = { number ->
+                        handleDialpadCallWithSimSelector(number)
+                    },
+                    onDialpadAddContactClick = { number ->
+                        startAddContactIntent(number)
+                    },
+                    showImeiDialog = showImeiDialogState,
+                    onDismissImeiDialog = {
+                        showImeiDialogState = false
+                    },
+                    // Global Navigation
+                    onTabSelected = { tabIndex ->
+                        selectedTabState = tabIndex
+                        config.lastUsedViewPagerPage = tabIndex
+                        if (tabIndex == 0) {
+                            clearMissedCalls()
+                        }
+                    },
+                    onSettingsClick = {
+                        launchSettings()
+                    },
+                    onAboutClick = {
+                        launchAbout()
+                    }
+                )
+            }
+        }
     }
 
     override fun onResume() {
         super.onResume()
-        if (storedShowTabs != config.showTabs) {
-            config.lastUsedViewPagerPage = 0
-            System.exit(0)
-            return
-        }
-
-        updateMenuColors()
-        val properPrimaryColor = getProperPrimaryColor()
-        val dialpadIcon = resources.getColoredDrawableWithColor(R.drawable.ic_dialpad_vector, properPrimaryColor.getContrastColor())
-        binding.mainDialpadButton.setImageDrawable(dialpadIcon)
-
-        updateTextColors(binding.mainHolder)
-        setupTabColors()
-
-        getAllFragments().forEach {
-            it?.setupColors(getProperTextColor(), getProperPrimaryColor(), getProperPrimaryColor())
-        }
-
-        val configStartNameWithSurname = config.startNameWithSurname
-        if (storedStartNameWithSurname != configStartNameWithSurname) {
-            getContactsFragment()?.startNameWithSurnameChanged(configStartNameWithSurname)
-            getFavoritesFragment()?.startNameWithSurnameChanged(configStartNameWithSurname)
-            storedStartNameWithSurname = config.startNameWithSurname
-        }
-
-        if (!binding.mainMenu.isSearchOpen) {
-            refreshItems(true)
-        }
-
-        val configFontSize = config.fontSize
-        if (storedFontSize != configFontSize) {
-            getAllFragments().forEach {
-                it?.fontSizeChanged()
-            }
-        }
-
+        refreshAll()
         checkShortcuts()
-        Handler().postDelayed({
-            getRecentsFragment()?.refreshItems()
-        }, 2000)
     }
 
     override fun onPause() {
         super.onPause()
-        storedShowTabs = config.showTabs
-        storedStartNameWithSurname = config.startNameWithSurname
-        config.lastUsedViewPagerPage = binding.viewPager.currentItem
+        config.lastUsedViewPagerPage = selectedTabState
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        handleDialIntent(intent)
     }
 
     override fun onActivityResult(requestCode: Int, resultCode: Int, resultData: Intent?) {
         super.onActivityResult(requestCode, resultCode, resultData)
-        // we don't really care about the result, the app can work without being the default Dialer too
         if (requestCode == REQUEST_CODE_SET_DEFAULT_DIALER) {
-            checkContactPermissions()
+            checkPermissions()
         } else if (requestCode == REQUEST_CODE_SET_DEFAULT_CALLER_ID && resultCode != Activity.RESULT_OK) {
             toast(R.string.must_make_default_caller_id_app, length = Toast.LENGTH_LONG)
             baseConfig.blockUnknownNumbers = false
@@ -176,16 +253,21 @@ class MainActivity : SimpleActivity() {
 
     override fun onConfigurationChanged(newConfig: Configuration) {
         super.onConfigurationChanged(newConfig)
-        refreshItems()
+        refreshAll()
     }
 
     override fun onBackPressedCompat(): Boolean {
-        return if (binding.mainMenu.isSearchOpen) {
-            binding.mainMenu.closeSearch()
-            true
-        } else {
-            false
+        if (isSearchActiveState) {
+            isSearchActiveState = false
+            searchQueryState = ""
+            return true
         }
+        val defTab = getDefaultTab()
+        if (selectedTabState != defTab) {
+            selectedTabState = defTab
+            return true
+        }
+        return false
     }
 
     override fun onDestroy() {
@@ -193,369 +275,254 @@ class MainActivity : SimpleActivity() {
         EventBus.getDefault().unregister(this)
     }
 
-    private fun refreshMenuItems() {
-        val currentFragment = getCurrentFragment()
-        binding.mainMenu.requireToolbar().menu.apply {
-            findItem(R.id.clear_call_history).isVisible = currentFragment == getRecentsFragment()
-            findItem(R.id.sort).isVisible = currentFragment != getRecentsFragment()
-            findItem(R.id.filter).isVisible = currentFragment != getRecentsFragment()
-            findItem(R.id.create_new_contact).isVisible = currentFragment == getContactsFragment()
-            findItem(R.id.change_view_type).isVisible = currentFragment == getFavoritesFragment()
-            findItem(R.id.column_count).isVisible = currentFragment == getFavoritesFragment() && config.viewType == VIEW_TYPE_GRID
-            findItem(R.id.more_apps_from_us).isVisible = resources.getBoolean(R.bool.is_google_play_build)
+    private fun handleDialIntent(intent: Intent) {
+        if (intent.action == Intent.ACTION_DIAL || (intent.action == Intent.ACTION_VIEW && intent.data?.scheme == "tel")) {
+            selectedTabState = 2
+            intent.data?.schemeSpecificPart?.let { number ->
+                setDialedNumber(number)
+            }
+        } else if (intent.action == Intent.ACTION_VIEW) {
+            selectedTabState = 0
+            clearMissedCalls()
         }
     }
 
-    private fun setupOptionsMenu() {
-        binding.mainMenu.apply {
-            requireToolbar().inflateMenu(R.menu.menu)
-            toggleHideOnScroll(false)
-            setupMenu()
+    private fun checkPermissions() {
+        handlePermission(PERMISSION_READ_CONTACTS) { readGranted ->
+            hasContactsPermissionState = readGranted
+            if (readGranted) {
+                handlePermission(PERMISSION_WRITE_CONTACTS) {
+                    DebugContactsHelper.insertSampleContactsIfEmpty(this) {
+                        runOnUiThread {
+                            refreshContacts()
+                        }
+                    }
+                }
+            }
+        }
 
-            onSearchClosedListener = {
-                getAllFragments().forEach {
-                    it?.onSearchQueryChanged("")
+        handlePermission(PERMISSION_READ_CALL_LOG) { logGranted ->
+            hasCallLogPermissionState = logGranted
+            if (logGranted) {
+                refreshRecents()
+            }
+        }
+    }
+
+    private fun requestContactsPermission() {
+        handlePermission(PERMISSION_READ_CONTACTS) { granted ->
+            hasContactsPermissionState = granted
+            if (granted) {
+                refreshContacts()
+            }
+        }
+    }
+
+    private fun requestCallLogPermission() {
+        handlePermission(PERMISSION_READ_CALL_LOG) { granted ->
+            hasCallLogPermissionState = granted
+            if (granted) {
+                refreshRecents()
+            }
+        }
+    }
+
+    fun refreshAll() {
+        speedDialState = config.getSpeedDialValues()
+        hasContactsPermissionState = hasPermission(PERMISSION_READ_CONTACTS)
+        hasCallLogPermissionState = hasPermission(PERMISSION_READ_CALL_LOG)
+        refreshContacts()
+        refreshRecents()
+    }
+
+    fun refreshFragments() {
+        refreshAll()
+    }
+
+    private fun refreshContacts() {
+        if (!hasPermission(PERMISSION_READ_CONTACTS)) {
+            contactsState = emptyList()
+            favoritesState = emptyList()
+            return
+        }
+
+        val privateCursor = getMyContactsCursor(favoritesOnly = false, withPhoneNumbersOnly = true)
+        ContactsHelper(this).getContacts(showOnlyContactsWithNumbers = true) { contacts ->
+            val allContacts = ArrayList(contacts)
+
+            if (SMT_PRIVATE !in baseConfig.ignoredContactSources) {
+                val privateContacts = MyContactsContentProvider.getContacts(this, privateCursor)
+                if (privateContacts.isNotEmpty()) {
+                    allContacts.addAll(privateContacts)
+                    allContacts.sort()
                 }
             }
 
-            onSearchTextChangedListener = { text ->
-                getCurrentFragment()?.onSearchQueryChanged(text)
-            }
-
-            requireToolbar().setOnMenuItemClickListener { menuItem ->
-                when (menuItem.itemId) {
-                    R.id.clear_call_history -> clearCallHistory()
-                    R.id.create_new_contact -> launchCreateNewContactIntent()
-                    R.id.sort -> showSortingDialog(showCustomSorting = getCurrentFragment() is FavoritesFragment)
-                    R.id.filter -> showFilterDialog()
-                    R.id.more_apps_from_us -> launchMoreAppsFromUsIntent()
-                    R.id.settings -> launchSettings()
-                    R.id.change_view_type -> changeViewType()
-                    R.id.column_count -> changeColumnCount()
-                    R.id.about -> launchAbout()
-                    else -> return@setOnMenuItemClickListener false
+            if (debugMode && allContacts.isEmpty()) {
+                DebugContactsHelper.insertSampleContactsIfEmpty(this) {
+                    ContactsHelper(this).getContacts(showOnlyContactsWithNumbers = true) { reloaded ->
+                        gotContacts(reloaded)
+                    }
                 }
-                return@setOnMenuItemClickListener true
+            } else {
+                gotContacts(allContacts)
             }
         }
     }
 
-    private fun changeColumnCount() {
-        val items = ArrayList<RadioItem>()
-        for (i in 1..CONTACTS_GRID_MAX_COLUMNS_COUNT) {
-            items.add(RadioItem(i, resources.getQuantityString(R.plurals.column_counts, i, i)))
+    private fun gotContacts(contacts: List<Contact>) {
+        try {
+            cachedContacts.clear()
+            cachedContacts.addAll(contacts)
+        } catch (_: Exception) {}
+
+        val favorites = contacts.filter { it.starred == 1 }
+        runOnUiThread {
+            contactsState = contacts
+            favoritesState = favorites
+        }
+    }
+
+    private fun refreshRecents() {
+        if (!hasPermission(PERMISSION_READ_CALL_LOG)) {
+            recentsState = emptyList()
+            return
         }
 
-        val currentColumnCount = config.contactsGridColumnCount
-        RadioGroupDialog(this, ArrayList(items), currentColumnCount) {
-            val newColumnCount = it as Int
-            if (currentColumnCount != newColumnCount) {
-                config.contactsGridColumnCount = newColumnCount
-                getFavoritesFragment()?.columnCountChanged()
+        recentsHelper?.getRecentCalls(queryLimit = -1) { calls ->
+            prepareCallLog(calls) { prepared ->
+                runOnUiThread {
+                    recentsState = if (debugMode && prepared.isEmpty()) {
+                        DebugContactsHelper.getSampleCallLogs()
+                    } else {
+                        prepared
+                    }
+                }
             }
         }
     }
 
-    private fun changeViewType() {
-        ChangeViewTypeDialog(this) {
-            refreshMenuItems()
-            getFavoritesFragment()?.refreshItems()
+    private fun prepareCallLog(recentCalls: List<RecentCall>, callback: (List<CallLogItem>) -> Unit) {
+        val callLogItems = mutableListOf<CallLogItem>()
+        var currentDayCode = ""
+
+        recentCalls.forEach { call ->
+            if (call.dayCode != currentDayCode) {
+                currentDayCode = call.dayCode
+                callLogItems.add(CallLogItem.Date(call.startTS, call.dayCode))
+            }
+            callLogItems.add(call)
+        }
+
+        callback(callLogItems)
+    }
+
+    private fun findContactByCall(recentCall: RecentCall): Contact? {
+        return cachedContacts.find {
+            it.name == recentCall.name && it.doesHavePhoneNumber(recentCall.phoneNumber)
         }
     }
 
-    private fun updateMenuColors() {
-        binding.mainMenu.updateColors()
+    private fun appendDialpadChar(char: Char) {
+        val candidate = dialedNumberState + char
+        if (candidate == "*#06#") {
+            dialedNumberState = ""
+            showImeiDialogState = true
+            handleSpecialCode("06")
+        } else if (candidate.length > 8 && candidate.startsWith("*#*#") && candidate.endsWith("#*#*")) {
+            val secretCode = candidate.substring(4, candidate.length - 4)
+            dialedNumberState = ""
+            handleSpecialCode(secretCode)
+        } else {
+            dialedNumberState = candidate
+        }
     }
 
-    private fun checkContactPermissions() {
-        handlePermission(PERMISSION_READ_CONTACTS) {
-            initFragments()
+    fun setDialedNumber(number: String) {
+        if (number == "*#06#") {
+            dialedNumberState = ""
+            showImeiDialogState = true
+            handleSpecialCode("06")
+        } else if (number.length > 8 && number.startsWith("*#*#") && number.endsWith("#*#*")) {
+            val secretCode = number.substring(4, number.length - 4)
+            dialedNumberState = ""
+            handleSpecialCode(secretCode)
+        } else {
+            dialedNumberState = number
+        }
+    }
+
+    private fun handleDialpadCall(number: String, name: String? = null) {
+        if (number == "*#06#") {
+            dialedNumberState = ""
+            showImeiDialogState = true
+            handleSpecialCode("06")
+            return
+        }
+        if (number.isNotEmpty()) {
+            startCallWithConfirmationCheck(number, name ?: number)
+        }
+    }
+
+    private fun handleDialpadCallWithSimSelector(number: String): Boolean {
+        return if (areMultipleSIMsAvailable() && number.isNotEmpty()) {
+            startCallWithConfirmationCheck(
+                recipient = number,
+                name = number,
+                forceSimSelector = true
+            )
+            true
+        } else {
+            false
+        }
+    }
+
+    private fun handleSpecialCode(code: String) {
+        if (isOreoPlus()) {
+            if (isDefaultDialer()) {
+                try {
+                    getSystemService(TelephonyManager::class.java)?.sendDialerSpecialCode(code)
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+            } else {
+                launchDefaultDialer()
+            }
+        } else {
+            try {
+                val intent = Intent(Telephony.Sms.Intents.SECRET_CODE_ACTION, "android_secret_code://$code".toUri())
+                sendBroadcast(intent)
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
     }
 
     private fun clearCallHistory() {
         val confirmationText = "${getString(R.string.clear_history_confirmation)}\n\n${getString(R.string.cannot_be_undone)}"
         ConfirmationDialog(this, confirmationText) {
-            RecentsHelper(this).removeAllRecentCalls(this) {
+            recentsHelper?.removeAllRecentCalls(this) {
                 runOnUiThread {
-                    getRecentsFragment()?.refreshItems(invalidate = true)
+                    refreshRecents()
                 }
             }
         }
     }
 
-    @SuppressLint("NewApi")
-    private fun checkShortcuts() {
-        val appIconColor = config.appIconColor
-        if (isNougatMR1Plus() && config.lastHandledShortcutColor != appIconColor) {
-            val launchDialpad = getLaunchDialpadShortcut(appIconColor)
-
-            try {
-                shortcutManager.dynamicShortcuts = listOf(launchDialpad)
-                config.lastHandledShortcutColor = appIconColor
-            } catch (ignored: Exception) {
-            }
+    private fun showSortingDialog() {
+        ChangeSortingDialog(this, false) {
+            refreshContacts()
         }
     }
 
-    @SuppressLint("NewApi")
-    private fun getLaunchDialpadShortcut(appIconColor: Int): ShortcutInfo {
-        val newEvent = getString(R.string.dialpad)
-        val drawable = resources.getDrawable(R.drawable.shortcut_dialpad)
-        (drawable as LayerDrawable).findDrawableByLayerId(R.id.shortcut_dialpad_background).applyColorFilter(appIconColor)
-        val bmp = drawable.convertToBitmap()
-
-        val intent = Intent(this, DialpadActivity::class.java)
-        intent.action = Intent.ACTION_VIEW
-        return ShortcutInfo.Builder(this, "launch_dialpad")
-            .setShortLabel(newEvent)
-            .setLongLabel(newEvent)
-            .setIcon(Icon.createWithBitmap(bmp))
-            .setIntent(intent)
-            .build()
-    }
-
-    private fun setupTabColors() {
-        val activeView = binding.mainTabsHolder.getTabAt(binding.viewPager.currentItem)?.customView
-        updateBottomTabItemColors(activeView, true, getSelectedTabDrawableIds()[binding.viewPager.currentItem])
-
-        getInactiveTabIndexes(binding.viewPager.currentItem).forEach { index ->
-            val inactiveView = binding.mainTabsHolder.getTabAt(index)?.customView
-            updateBottomTabItemColors(inactiveView, false, getDeselectedTabDrawableIds()[index])
-        }
-
-        val bottomBarColor = getBottomNavigationBackgroundColor()
-        binding.mainTabsHolder.setBackgroundColor(bottomBarColor)
-    }
-
-    private fun getInactiveTabIndexes(activeIndex: Int) = (0 until binding.mainTabsHolder.tabCount).filter { it != activeIndex }
-
-    private fun getSelectedTabDrawableIds(): List<Int> {
-        val showTabs = config.showTabs
-        val icons = mutableListOf<Int>()
-
-        if (showTabs and TAB_CONTACTS != 0) {
-            icons.add(R.drawable.ic_person_vector)
-        }
-
-        if (showTabs and TAB_FAVORITES != 0) {
-            icons.add(R.drawable.ic_star_vector)
-        }
-
-        if (showTabs and TAB_CALL_HISTORY != 0) {
-            icons.add(R.drawable.ic_clock_filled_vector)
-        }
-
-        return icons
-    }
-
-    private fun getDeselectedTabDrawableIds(): ArrayList<Int> {
-        val showTabs = config.showTabs
-        val icons = ArrayList<Int>()
-
-        if (showTabs and TAB_CONTACTS != 0) {
-            icons.add(R.drawable.ic_person_outline_vector)
-        }
-
-        if (showTabs and TAB_FAVORITES != 0) {
-            icons.add(R.drawable.ic_star_outline_vector)
-        }
-
-        if (showTabs and TAB_CALL_HISTORY != 0) {
-            icons.add(R.drawable.ic_clock_vector)
-        }
-
-        return icons
-    }
-
-    private fun initFragments() {
-        binding.viewPager.offscreenPageLimit = 2
-        binding.viewPager.addOnPageChangeListener(object : ViewPager.OnPageChangeListener {
-            override fun onPageScrollStateChanged(state: Int) {}
-
-            override fun onPageScrolled(position: Int, positionOffset: Float, positionOffsetPixels: Int) {}
-
-            override fun onPageSelected(position: Int) {
-                binding.mainTabsHolder.getTabAt(position)?.select()
-                getAllFragments().forEach {
-                    it?.finishActMode()
-                }
-                refreshMenuItems()
-            }
-        })
-
-        // selecting the proper tab sometimes glitches, add an extra selector to make sure we have it right
-        binding.mainTabsHolder.onGlobalLayout {
-            Handler().postDelayed({
-                var wantedTab = getDefaultTab()
-
-                // open the Recents tab if we got here by clicking a missed call notification
-                if (intent.action == Intent.ACTION_VIEW && config.showTabs and TAB_CALL_HISTORY > 0) {
-                    wantedTab = binding.mainTabsHolder.tabCount - 1
-                }
-
-                binding.mainTabsHolder.getTabAt(wantedTab)?.select()
-                refreshMenuItems()
-            }, 100L)
-        }
-
-        binding.mainDialpadButton.setOnClickListener {
-            launchDialpad()
-        }
-
-        binding.viewPager.onGlobalLayout {
-            refreshMenuItems()
-        }
-
-        if (config.openDialPadAtLaunch && !launchedDialer) {
-            launchDialpad()
-            launchedDialer = true
-        }
-    }
-
-    private fun setupTabs() {
-        binding.viewPager.adapter = null
-        binding.mainTabsHolder.removeAllTabs()
-        tabsList.forEachIndexed { index, value ->
-            if (config.showTabs and value != 0) {
-                binding.mainTabsHolder.newTab().setCustomView(R.layout.bottom_tablayout_item).apply {
-                    customView?.findViewById<ImageView>(R.id.tab_item_icon)?.setImageDrawable(getTabIcon(index))
-                    customView?.findViewById<TextView>(R.id.tab_item_label)?.text = getTabLabel(index)
-                    AutofitHelper.create(customView?.findViewById(R.id.tab_item_label))
-                    binding.mainTabsHolder.addTab(this)
-                }
-            }
-        }
-
-        binding.mainTabsHolder.onTabSelectionChanged(
-            tabUnselectedAction = {
-                updateBottomTabItemColors(it.customView, false, getDeselectedTabDrawableIds()[it.position])
-            },
-            tabSelectedAction = {
-                getCurrentFragment()?.onSearchQueryChanged(binding.mainMenu.getCurrentQuery())
-                binding.viewPager.currentItem = it.position
-                updateBottomTabItemColors(it.customView, true, getSelectedTabDrawableIds()[it.position])
-
-                val lastPosition = binding.mainTabsHolder.tabCount - 1
-                if (it.position == lastPosition && config.showTabs and TAB_CALL_HISTORY > 0) {
-                    clearMissedCalls()
-                }
-            }
-        )
-
-        binding.mainTabsHolder.beGoneIf(binding.mainTabsHolder.tabCount == 1)
-        storedShowTabs = config.showTabs
-        storedStartNameWithSurname = config.startNameWithSurname
-    }
-
-    private fun getTabIcon(position: Int): Drawable {
-        val drawableId = when (position) {
-            0 -> R.drawable.ic_person_vector
-            1 -> R.drawable.ic_star_vector
-            else -> R.drawable.ic_clock_vector
-        }
-
-        return resources.getColoredDrawableWithColor(drawableId, getProperTextColor())
-    }
-
-    private fun getTabLabel(position: Int): String {
-        val stringId = when (position) {
-            0 -> R.string.contacts_tab
-            1 -> R.string.favorites_tab
-            else -> R.string.call_history_tab
-        }
-
-        return resources.getString(stringId)
-    }
-
-    private fun refreshItems(openLastTab: Boolean = false) {
-        if (isDestroyed || isFinishing) {
-            return
-        }
-
-        binding.apply {
-            if (viewPager.adapter == null) {
-                viewPager.adapter = ViewPagerAdapter(this@MainActivity)
-                viewPager.currentItem = if (openLastTab) config.lastUsedViewPagerPage else getDefaultTab()
-                viewPager.onGlobalLayout {
-                    refreshFragments()
-                }
-            } else {
-                refreshFragments()
-            }
-        }
-    }
-
-    private fun launchDialpad() {
-        Intent(applicationContext, DialpadActivity::class.java).apply {
-            startActivity(this)
-        }
-    }
-
-    fun refreshFragments() {
-        cacheContacts()
-        getContactsFragment()?.refreshItems()
-        getFavoritesFragment()?.refreshItems()
-        getRecentsFragment()?.refreshItems()
-    }
-
-    private fun getAllFragments(): ArrayList<MyViewPagerFragment<*>?> {
-        val showTabs = config.showTabs
-        val fragments = arrayListOf<MyViewPagerFragment<*>?>()
-
-        if (showTabs and TAB_CONTACTS > 0) {
-            fragments.add(getContactsFragment())
-        }
-
-        if (showTabs and TAB_FAVORITES > 0) {
-            fragments.add(getFavoritesFragment())
-        }
-
-        if (showTabs and TAB_CALL_HISTORY > 0) {
-            fragments.add(getRecentsFragment())
-        }
-
-        return fragments
-    }
-
-    private fun getCurrentFragment(): MyViewPagerFragment<*>? = getAllFragments().getOrNull(binding.viewPager.currentItem)
-
-    private fun getContactsFragment(): ContactsFragment? = findViewById(R.id.contacts_fragment)
-
-    private fun getFavoritesFragment(): FavoritesFragment? = findViewById(R.id.favorites_fragment)
-
-    private fun getRecentsFragment(): RecentsFragment? = findViewById(R.id.recents_fragment)
-
-    private fun getDefaultTab(): Int {
-        val showTabsMask = config.showTabs
-        return when (config.defaultTab) {
-            TAB_LAST_USED -> if (config.lastUsedViewPagerPage < binding.mainTabsHolder.tabCount) config.lastUsedViewPagerPage else 0
-            TAB_CONTACTS -> 0
-            TAB_FAVORITES -> if (showTabsMask and TAB_CONTACTS > 0) 1 else 0
-            else -> {
-                if (showTabsMask and TAB_CALL_HISTORY > 0) {
-                    if (showTabsMask and TAB_CONTACTS > 0) {
-                        if (showTabsMask and TAB_FAVORITES > 0) {
-                            2
-                        } else {
-                            1
-                        }
-                    } else {
-                        if (showTabsMask and TAB_FAVORITES > 0) {
-                            1
-                        } else {
-                            0
-                        }
-                    }
-                } else {
-                    0
-                }
-            }
+    private fun showFilterDialog() {
+        FilterContactSourcesDialog(this) {
+            refreshContacts()
+            refreshRecents()
         }
     }
 
     private fun launchSettings() {
-        hideKeyboard()
         startActivity(Intent(applicationContext, SettingsActivity::class.java))
     }
 
@@ -577,65 +544,44 @@ class MainActivity : SimpleActivity() {
         startAboutActivity(R.string.app_name, licenses, BuildConfig.VERSION_NAME, faqItems, true)
     }
 
-    private fun showSortingDialog(showCustomSorting: Boolean) {
-        ChangeSortingDialog(this, showCustomSorting) {
-            getFavoritesFragment()?.refreshItems {
-                if (binding.mainMenu.isSearchOpen) {
-                    getCurrentFragment()?.onSearchQueryChanged(binding.mainMenu.getCurrentQuery())
-                }
-            }
-
-            getContactsFragment()?.refreshItems {
-                if (binding.mainMenu.isSearchOpen) {
-                    getCurrentFragment()?.onSearchQueryChanged(binding.mainMenu.getCurrentQuery())
-                }
-            }
+    private fun getDefaultTab(): Int {
+        val defaultTab = config.defaultTab
+        if (defaultTab == TAB_LAST_USED) {
+            return config.lastUsedViewPagerPage.coerceIn(0, 2)
         }
+        val activeTabs = tabsList.filter { it and config.showTabs != 0 }
+        val index = activeTabs.indexOf(defaultTab)
+        return if (index != -1) index else 0
     }
 
-    private fun showFilterDialog() {
-        FilterContactSourcesDialog(this) {
-            getFavoritesFragment()?.refreshItems {
-                if (binding.mainMenu.isSearchOpen) {
-                    getCurrentFragment()?.onSearchQueryChanged(binding.mainMenu.getCurrentQuery())
-                }
-            }
+    @SuppressLint("NewApi")
+    private fun checkShortcuts() {
+        val appIconColor = config.appIconColor
+        if (isNougatMR1Plus() && config.lastHandledShortcutColor != appIconColor) {
+            val newEvent = getString(R.string.dialpad)
+            val drawable = resources.getDrawable(R.drawable.shortcut_dialpad)
+            (drawable as? LayerDrawable)?.findDrawableByLayerId(R.id.shortcut_dialpad_background)?.applyColorFilter(appIconColor)
+            val bmp = drawable?.convertToBitmap() ?: return
 
-            getContactsFragment()?.refreshItems {
-                if (binding.mainMenu.isSearchOpen) {
-                    getCurrentFragment()?.onSearchQueryChanged(binding.mainMenu.getCurrentQuery())
-                }
+            val intent = Intent(this, DialpadActivity::class.java).apply {
+                action = Intent.ACTION_VIEW
             }
-
-            getRecentsFragment()?.refreshItems {
-                if (binding.mainMenu.isSearchOpen) {
-                    getCurrentFragment()?.onSearchQueryChanged(binding.mainMenu.getCurrentQuery())
-                }
-            }
-        }
-    }
-
-    fun cacheContacts() {
-        val privateCursor = getMyContactsCursor(favoritesOnly = false, withPhoneNumbersOnly = true)
-        ContactsHelper(this).getContacts(getAll = true, showOnlyContactsWithNumbers = true) { contacts ->
-            if (SMT_PRIVATE !in config.ignoredContactSources) {
-                val privateContacts = MyContactsContentProvider.getContacts(this, privateCursor)
-                if (privateContacts.isNotEmpty()) {
-                    contacts.addAll(privateContacts)
-                    contacts.sort()
-                }
-            }
+            val shortcut = ShortcutInfo.Builder(this, "launch_dialpad")
+                .setShortLabel(newEvent)
+                .setLongLabel(newEvent)
+                .setIcon(Icon.createWithBitmap(bmp))
+                .setIntent(intent)
+                .build()
 
             try {
-                cachedContacts.clear()
-                cachedContacts.addAll(contacts)
-            } catch (ignored: Exception) {
-            }
+                shortcutManager.dynamicShortcuts = listOf(shortcut)
+                config.lastHandledShortcutColor = appIconColor
+            } catch (_: Exception) {}
         }
     }
 
     @Subscribe(threadMode = ThreadMode.MAIN)
     fun refreshCallLog(event: Events.RefreshCallLog) {
-        getRecentsFragment()?.refreshItems()
+        refreshRecents()
     }
 }

@@ -7,6 +7,7 @@ plugins {
     alias(libs.plugins.android)
     alias(libs.plugins.kotlinSerialization)
     alias(libs.plugins.detekt)
+    alias(libs.plugins.composeCompiler)
 }
 
 val keystorePropertiesFile: File = rootProject.file("keystore.properties")
@@ -61,6 +62,7 @@ android {
     buildFeatures {
         viewBinding = true
         buildConfig = true
+        compose = true
     }
 
     buildTypes {
@@ -112,7 +114,7 @@ android {
         )
     }
 
-    namespace = project.property("APP_ID").toString()
+    namespace = "org.fossify.phone"
 
     lint {
         checkReleaseBuilds = false
@@ -129,6 +131,12 @@ android {
     }
 }
 
+androidComponents {
+    beforeVariants {
+        it.enableAndroidTest = false
+    }
+}
+
 detekt {
     baseline = file("detekt-baseline.xml")
     config.setFrom("$rootDir/detekt.yml")
@@ -137,6 +145,18 @@ detekt {
 }
 
 dependencies {
+    val composeBom = platform(libs.androidx.compose.bom)
+    implementation(composeBom)
+    implementation(libs.androidx.compose.ui)
+    implementation(libs.androidx.compose.ui.graphics)
+    implementation(libs.androidx.compose.ui.tooling.preview)
+    implementation(libs.androidx.compose.material3)
+    implementation(libs.androidx.compose.foundation)
+    implementation(libs.androidx.activity.compose)
+    implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation(libs.androidx.lifecycle.runtime.compose)
+    debugImplementation(libs.androidx.compose.ui.tooling)
+
     implementation(libs.fossify.commons)
     implementation(libs.indicator.fast.scroll)
     implementation(libs.autofit.text.view)

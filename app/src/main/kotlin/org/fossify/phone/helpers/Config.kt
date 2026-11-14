@@ -97,7 +97,14 @@ class Config(context: Context) : BaseConfig(context) {
     }
 
     var showTabs: Int
-        get() = prefs.getInt(SHOW_TABS, ALL_TABS_MASK)
+        get() {
+            if (!prefs.getBoolean("three_tabs_configured_v1", false)) {
+                val updatedTabs = ALL_TABS_MASK
+                prefs.edit().putBoolean("three_tabs_configured_v1", true).putInt(SHOW_TABS, updatedTabs).apply()
+                return updatedTabs
+            }
+            return prefs.getInt(SHOW_TABS, ALL_TABS_MASK)
+        }
         set(showTabs) = prefs.edit().putInt(SHOW_TABS, showTabs).apply()
 
     var groupSubsequentCalls: Boolean
