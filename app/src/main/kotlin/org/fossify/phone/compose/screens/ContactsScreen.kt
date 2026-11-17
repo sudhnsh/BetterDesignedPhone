@@ -1,6 +1,8 @@
 package org.fossify.phone.compose.screens
 
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.background
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -17,6 +19,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -26,6 +29,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontStyle
@@ -47,7 +51,15 @@ fun ContactsScreen(
     favorites: List<Contact> = emptyList(),
     searchQuery: String,
     hasPermission: Boolean,
+    selectedContactIds: Set<Int> = emptySet(),
+    onToggleSelectContact: (Contact) -> Unit = {},
+    onContactLongClick: (Contact) -> Unit = {},
     onContactClick: (Contact) -> Unit,
+    onProfileIconClick: (Contact) -> Unit,
+    onCreateContactClick: () -> Unit,
+    onRequestPermissionClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     onProfileIconClick: (Contact) -> Unit,
     onCreateContactClick: () -> Unit,
     onRequestPermissionClick: () -> Unit,
@@ -165,11 +177,30 @@ fun ContactsScreen(
                     items = filteredContacts,
                     key = { it.rawId }
                 ) { contact ->
+                    val isSelected = selectedContactIds.contains(contact.rawId)
+                    val isSelectionMode = selectedContactIds.isNotEmpty()
                     ContactListItem(
                         contact = contact,
                         searchQuery = searchQuery,
-                        onClick = { onContactClick(contact) },
-                        onProfileClick = { onProfileIconClick(contact) }
+                        isSelected = isSelected,
+                        isSelectionMode = isSelectionMode,
+                        onClick = {
+                            if (isSelectionMode) {
+                                onToggleSelectContact(contact)
+                            } else {
+                                onContactClick(contact)
+                            }
+                        },
+                        onLongClick = {
+                            onContactLongClick(contact)
+                        },
+                        onProfileClick = {
+                            if (isSelectionMode) {
+                                onToggleSelectContact(contact)
+                            } else {
+                                onProfileIconClick(contact)
+                            }
+                        }
                     )
                 }
             }
@@ -304,21 +335,43 @@ private fun FavoriteContactChip(
     }
 }
 
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun ContactListItem(
     contact: Contact,
     searchQuery: String,
+    isSelected: Boolean,
+    isSelectionMode: Boolean,
     onClick: () -> Unit,
+    onLongClick: () -> Unit,
     onProfileClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val rowBg = if (isSelected) {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.35f)
+    } else {
+        Color.Transparent
+    }
+
     Row(
         modifier = modifier
             .fillMaxWidth()
-            .clickable(onClick = onClick)
+            .background(rowBg)
+            .combinedClickable(
+                onClick = onClick,
+                onLongClick = onLongClick
+            )
             .padding(horizontal = 16.dp, vertical = 10.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (isSelectionMode) {
+            Checkbox(
+                checked = isSelected,
+                onCheckedChange = { onClick() },
+                modifier = Modifier.padding(end = 8.dp)
+            )
+        }
+
         ContactAvatar(
             name = contact.getNameToDisplay(),
             photoUri = contact.photoUri,

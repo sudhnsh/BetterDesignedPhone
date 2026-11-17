@@ -88,6 +88,7 @@ fun MainScreen(
     onRequestContactsPermission: () -> Unit,
     onSortClick: () -> Unit,
     onFilterClick: () -> Unit,
+    onDeleteContacts: (List<Int>) -> Unit = {},
     // Keypad
     dialedNumber: String,
     onAppendChar: (Char) -> Unit,
@@ -110,11 +111,23 @@ fun MainScreen(
     val coroutineScope = rememberCoroutineScope()
     var showOverflowMenu by remember { mutableStateOf(false) }
     var showClearCallHistoryDialog by remember { mutableStateOf(false) }
+    var selectedContactIds by remember { mutableStateOf(setOf<Int>()) }
+    var showDeleteContactsConfirmation by remember { mutableStateOf(false) }
 
     LaunchedEffect(initialTab) {
         if (initialTab in 0..2 && pagerState.currentPage != initialTab) {
             pagerState.scrollToPage(initialTab)
         }
+    }
+
+    LaunchedEffect(pagerState.currentPage) {
+        if (pagerState.currentPage != 1 && selectedContactIds.isNotEmpty()) {
+            selectedContactIds = emptySet()
+        }
+    }
+
+    BackHandler(enabled = selectedContactIds.isNotEmpty()) {
+        selectedContactIds = emptySet()
     }
 
     // Reset search when swiping/changing tabs
@@ -134,7 +147,53 @@ fun MainScreen(
         modifier = modifier.fillMaxSize(),
         contentWindowInsets = WindowInsets.systemBars,
         topBar = {
-            if (!isSearchActive) {
+            if (selectedContactIds.isNotEmpty() && pagerState.currentPage == 1) {
+                TopAppBar(
+                    title = {
+                        Text(
+                            text = "${selectedContactIds.size} selected",
+                            fontWeight = FontWeight.Bold,
+                            fontSize = 20.sp
+                        )
+                    },
+                    navigationIcon = {
+                        IconButton(onClick = { selectedContactIds = emptySet() }) {
+                            Icon(
+                                painter = painterResource(org.fossify.commons.R.drawable.ic_cross_vector),
+                                contentDescription = stringResource(org.fossify.commons.R.string.cancel)
+                            )
+                        }
+                    },
+                    colors = TopAppBarDefaults.topAppBarColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceContainer,
+                        titleContentColor = MaterialTheme.colorScheme.onSurface,
+                        navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                        actionIconContentColor = MaterialTheme.colorScheme.onSurface
+                    ),
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    actions = {
+                        IconButton(onClick = {
+                            selectedContactIds = if (selectedContactIds.size == contacts.size) {
+                                emptySet()
+                            } else {
+                                contacts.map { it.rawId }.toSet()
+                            }
+                        }) {
+                            Icon(
+                                painter = painterResource(org.fossify.commons.R.drawable.ic_select_all_vector),
+                                contentDescription = stringResource(org.fossify.commons.R.string.select_all)
+                            )
+                        }
+                        IconButton(onClick = { showDeleteContactsConfirmation = true }) {
+                            Icon(
+                                painter = painterResource(org.fossify.commons.R.drawable.ic_delete_vector),
+                                contentDescription = stringResource(org.fossify.commons.R.string.delete),
+                                tint = MaterialTheme.colorScheme.error
+                            )
+                        }
+                    }
+                )
+            } else if (!isSearchActive) {
                 TopAppBar(
                     title = {
                         Text(
@@ -399,6 +458,21 @@ fun MainScreen(
                             favorites = favorites,
                             searchQuery = searchQuery,
                             hasPermission = hasContactsPermission,
+                            selectedContactIds = selectedContactIds,
+                            onToggleSelectContact = { contact ->
+                                selectedContactIds = if (selectedContactIds.contains(contact.rawId)) {
+                                    selectedContactIds - contact.rawId
+                                } else {
+                                    selectedContactIds + contact.rawId
+                                }
+                            },
+                            onContactLongClick = { contact ->
+                                selectedContactIds = if (selectedContactIds.contains(contact.rawId)) {
+                                    selectedContactIds - contact.rawId
+                                } else {
+                                    selectedContactIds + contact.rawId
+                                }
+                            },
                             onContactClick = onContactClick,
                             onProfileIconClick = onContactProfileClick,
                             onCreateContactClick = onCreateContactClick,
@@ -487,6 +561,66 @@ fun MainScreen(
             dismissButton = {
                 TextButton(
                     onClick = { showClearCallHistoryDialog = false },
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text(
+                        text = stringResource(org.fossify.commons.R.string.cancel),
+                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                    )
+                }
+            }
+        )
+    }
+
+    if (showDeleteContactsConfirmation) {
+        AlertDialog(
+            onDismissRequest = { showDeleteContactsConfirmation = false },
+            shape = RoundedCornerShape(24.dp),
+            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+            tonalElevation = 6.dp,
+            title = {
+                Text(
+                    text = if (selectedContactIds.size == 1) "Delete Contact" else "Delete Contacts",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 20.sp,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            },
+            text = {
+                Text(
+                    text = if (selectedContactIds.size == 1) {
+                        "Are you sure you want to delete the selected contact?"
+                    } else {
+                        "Are you sure you want to delete ${selectedContactIds.size} selected contacts?"
+                    },
+                    fontSize = 14.sp,
+                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
+                    lineHeight = 20.sp
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val idsToDelete = selectedContactIds.toList()
+                        selectedContactIds = emptySet()
+                        showDeleteContactsConfirmation = false
+                        onDeleteContacts(idsToDelete)
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                        contentColor = MaterialTheme.colorScheme.onError
+                    ),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text(
+                        text = stringResource(org.fossify.commons.R.string.delete),
+                        fontWeight = FontWeight.SemiBold
+                    )
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { showDeleteContactsConfirmation = false },
                     shape = RoundedCornerShape(14.dp)
                 ) {
                     Text(

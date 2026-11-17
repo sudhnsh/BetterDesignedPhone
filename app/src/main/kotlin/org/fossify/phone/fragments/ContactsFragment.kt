@@ -21,7 +21,6 @@ import org.fossify.phone.compose.theme.PhoneTheme
 import org.fossify.phone.extensions.handleGenericContactClick
 import org.fossify.phone.extensions.launchCreateNewContactIntent
 import org.fossify.phone.extensions.startContactDetailsIntent
-import org.fossify.phone.helpers.DebugContactsHelper
 import org.fossify.phone.helpers.debugMode
 import org.fossify.phone.interfaces.RefreshItemsListener
 
@@ -95,19 +94,9 @@ class ContactsFragment(context: Context, attributeSet: AttributeSet) :
                 }
             }
 
-            if (debugMode && allContacts.isEmpty()) {
-                DebugContactsHelper.insertSampleContactsIfEmpty(context) {
-                    ContactsHelper(context).getContacts(showOnlyContactsWithNumbers = true) { reloaded ->
-                        (activity as? MainActivity)?.cachedContacts = ArrayList(reloaded)
-                        updateContactsAndFavorites(reloaded)
-                        callback?.invoke()
-                    }
-                }
-            } else {
-                (activity as? MainActivity)?.cachedContacts = allContacts
-                updateContactsAndFavorites(allContacts)
-                callback?.invoke()
-            }
+            (activity as? MainActivity)?.cachedContacts = allContacts
+            updateContactsAndFavorites(allContacts)
+            callback?.invoke()
         }
     }
 

@@ -18,7 +18,6 @@ import org.fossify.phone.extensions.config
 import org.fossify.phone.extensions.startAddContactIntent
 import org.fossify.phone.extensions.startCallWithConfirmationCheck
 import org.fossify.phone.extensions.startContactDetailsIntent
-import org.fossify.phone.helpers.DebugContactsHelper
 import org.fossify.phone.helpers.RecentsHelper
 import org.fossify.phone.helpers.debugMode
 import org.fossify.phone.interfaces.RefreshItemsListener
@@ -92,11 +91,7 @@ class RecentsFragment(context: Context, attributeSet: AttributeSet) :
 
         getRecentCalls(loadAll = true) { calls ->
             post {
-                itemsState = if (debugMode && calls.isEmpty()) {
-                    DebugContactsHelper.getSampleCallLogs()
-                } else {
-                    calls
-                }
+                itemsState = calls
                 callback?.invoke()
             }
         }

@@ -1,14 +1,10 @@
 package org.fossify.phone.helpers
 
-import android.content.ContentProviderOperation
 import android.content.Context
-import android.provider.CallLog.Calls
 import android.provider.ContactsContract
 import org.fossify.commons.extensions.hasPermission
 import org.fossify.commons.helpers.PERMISSION_WRITE_CONTACTS
-import org.fossify.phone.extensions.getDayCode
 import org.fossify.phone.models.CallLogItem
-import org.fossify.phone.models.RecentCall
 
 object DebugContactsHelper {
     val sampleContacts = listOf(
@@ -41,17 +37,10 @@ object DebugContactsHelper {
     )
 
     fun insertSampleContactsIfEmpty(context: Context, onComplete: (() -> Unit)? = null) {
-        if (!debugMode) {
-            onComplete?.invoke()
-            return
-        }
+        onComplete?.invoke()
+    }
 
-        val prefs = context.getSharedPreferences("debug_prefs", Context.MODE_PRIVATE)
-        if (prefs.getBoolean("debug_contacts_seeded_v1", false)) {
-            onComplete?.invoke()
-            return
-        }
-
+    fun removeSampleContacts(context: Context, onComplete: (() -> Unit)? = null) {
         if (!context.hasPermission(PERMISSION_WRITE_CONTACTS)) {
             onComplete?.invoke()
             return
@@ -59,38 +48,29 @@ object DebugContactsHelper {
 
         Thread {
             try {
-                for ((name, number) in sampleContacts) {
-                    val ops = ArrayList<ContentProviderOperation>()
-                    val rawContactInsertIndex = 0
-
-                    ops.add(
-                        ContentProviderOperation.newInsert(ContactsContract.RawContacts.CONTENT_URI)
-                            .withValue(ContactsContract.RawContacts.ACCOUNT_TYPE, null)
-                            .withValue(ContactsContract.RawContacts.ACCOUNT_NAME, null)
-                            .build()
+                for ((name, _) in sampleContacts) {
+                    val cursor = context.contentResolver.query(
+                        ContactsContract.Data.CONTENT_URI,
+                        arrayOf(ContactsContract.Data.RAW_CONTACT_ID),
+                        "${ContactsContract.Data.MIMETYPE} = ? AND ${ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME} = ?",
+                        arrayOf(ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE, name),
+                        null
                     )
-
-                    ops.add(
-                        ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                            .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContactInsertIndex)
-                            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.StructuredName.CONTENT_ITEM_TYPE)
-                            .withValue(ContactsContract.CommonDataKinds.StructuredName.DISPLAY_NAME, name)
-                            .build()
-                    )
-
-                    ops.add(
-                        ContentProviderOperation.newInsert(ContactsContract.Data.CONTENT_URI)
-                            .withValueBackReference(ContactsContract.Data.RAW_CONTACT_ID, rawContactInsertIndex)
-                            .withValue(ContactsContract.Data.MIMETYPE, ContactsContract.CommonDataKinds.Phone.CONTENT_ITEM_TYPE)
-                            .withValue(ContactsContract.CommonDataKinds.Phone.NUMBER, number)
-                            .withValue(ContactsContract.CommonDataKinds.Phone.TYPE, ContactsContract.CommonDataKinds.Phone.TYPE_MOBILE)
-                            .build()
-                    )
-
-                    context.contentResolver.applyBatch(ContactsContract.AUTHORITY, ops)
+                    cursor?.use {
+                        while (it.moveToNext()) {
+                            val rawContactId = it.getLong(0)
+                            context.contentResolver.delete(
+                                ContactsContract.RawContacts.CONTENT_URI.buildUpon()
+                                    .appendQueryParameter(ContactsContract.CALLER_IS_SYNCADAPTER, "true")
+                                    .build(),
+                                "${ContactsContract.RawContacts._ID} = ?",
+                                arrayOf(rawContactId.toString())
+                            )
+                        }
+                    }
                 }
-
-                prefs.edit().putBoolean("debug_contacts_seeded_v1", true).apply()
+                val prefs = context.getSharedPreferences("debug_prefs", Context.MODE_PRIVATE)
+                prefs.edit().remove("debug_contacts_seeded_v1").apply()
             } catch (e: Exception) {
                 e.printStackTrace()
             } finally {
@@ -99,101 +79,5 @@ object DebugContactsHelper {
         }.start()
     }
 
-    fun getSampleCallLogs(): List<CallLogItem> {
-        val now = System.currentTimeMillis()
-        val dayMs = 86400000L
-        val today = now
-        val yesterday = now - dayMs
-        val twoDaysAgo = now - 2 * dayMs
-
-        return listOf(
-            CallLogItem.Date(today, today.getDayCode()),
-            RecentCall(
-                id = 1001,
-                phoneNumber = "+1 555-0101",
-                name = "Alice Johnson",
-                photoUri = "",
-                startTS = now - 1800000L,
-                duration = 145,
-                type = Calls.INCOMING_TYPE,
-                simID = 1,
-                simColor = 0xFF2196F3.toInt(),
-                specificNumber = "",
-                specificType = "Mobile",
-                isUnknownNumber = false
-            ),
-            RecentCall(
-                id = 1002,
-                phoneNumber = "+1 555-0102",
-                name = "Bob Smith",
-                photoUri = "",
-                startTS = now - 7200000L,
-                duration = 0,
-                type = Calls.MISSED_TYPE,
-                simID = 1,
-                simColor = 0xFF2196F3.toInt(),
-                specificNumber = "",
-                specificType = "Mobile",
-                isUnknownNumber = false
-            ),
-            RecentCall(
-                id = 1003,
-                phoneNumber = "+91 98765 43210",
-                name = "Kavita Sharma",
-                photoUri = "",
-                startTS = now - 14400000L,
-                duration = 320,
-                type = Calls.OUTGOING_TYPE,
-                simID = 2,
-                simColor = 0xFF4CAF50.toInt(),
-                specificNumber = "",
-                specificType = "Work",
-                isUnknownNumber = false
-            ),
-            CallLogItem.Date(yesterday, yesterday.getDayCode()),
-            RecentCall(
-                id = 1004,
-                phoneNumber = "+1 555-0120",
-                name = "Tony Stark",
-                photoUri = "",
-                startTS = yesterday + 3600000L,
-                duration = 84,
-                type = Calls.OUTGOING_TYPE,
-                simID = 1,
-                simColor = 0xFF2196F3.toInt(),
-                specificNumber = "",
-                specificType = "Mobile",
-                isUnknownNumber = false
-            ),
-            RecentCall(
-                id = 1005,
-                phoneNumber = "+1 555-0105",
-                name = "Emma Watson",
-                photoUri = "",
-                startTS = yesterday - 7200000L,
-                duration = 210,
-                type = Calls.INCOMING_TYPE,
-                simID = 1,
-                simColor = 0xFF2196F3.toInt(),
-                specificNumber = "",
-                specificType = "Home",
-                isUnknownNumber = false
-            ),
-            CallLogItem.Date(twoDaysAgo, twoDaysAgo.getDayCode()),
-            RecentCall(
-                id = 1006,
-                phoneNumber = "+91 98111 22334",
-                name = "Rahul Dravid",
-                photoUri = "",
-                startTS = twoDaysAgo,
-                duration = 612,
-                type = Calls.INCOMING_TYPE,
-                simID = 2,
-                simColor = 0xFF4CAF50.toInt(),
-                specificNumber = "",
-                specificType = "Mobile",
-                isUnknownNumber = false
-            )
-        )
-    }
+    fun getSampleCallLogs(): List<CallLogItem> = emptyList()
 }

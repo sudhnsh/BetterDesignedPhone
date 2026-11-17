@@ -191,6 +191,9 @@ class MainActivity : SimpleActivity() {
                     onFilterClick = {
                         showFilterDialog()
                     },
+                    onDeleteContacts = { ids ->
+                        deleteContacts(ids)
+                    },
                     // Keypad
                     dialedNumber = dialedNumberState,
                     onAppendChar = { char ->
@@ -338,13 +341,14 @@ class MainActivity : SimpleActivity() {
         handlePermission(PERMISSION_READ_CONTACTS) { readGranted ->
             hasContactsPermissionState = readGranted
             if (readGranted) {
-                handlePermission(PERMISSION_WRITE_CONTACTS) {
-                    DebugContactsHelper.insertSampleContactsIfEmpty(this) {
+                if (hasPermission(PERMISSION_WRITE_CONTACTS)) {
+                    DebugContactsHelper.removeSampleContacts(this) {
                         runOnUiThread {
                             refreshContacts()
                         }
                     }
                 }
+                refreshContacts()
             }
         }
 
@@ -370,6 +374,19 @@ class MainActivity : SimpleActivity() {
             hasCallLogPermissionState = granted
             if (granted) {
                 refreshRecents()
+            }
+        }
+    }
+
+    private fun deleteContacts(rawIds: List<Int>) {
+        if (rawIds.isEmpty()) return
+        handlePermission(PERMISSION_WRITE_CONTACTS) { granted ->
+            if (granted) {
+                SimpleContactsHelper(this).deleteContactRawIDs(ArrayList(rawIds)) {
+                    runOnUiThread {
+                        refreshContacts()
+                    }
+                }
             }
         }
     }
@@ -405,15 +422,7 @@ class MainActivity : SimpleActivity() {
                 }
             }
 
-            if (debugMode && allContacts.isEmpty()) {
-                DebugContactsHelper.insertSampleContactsIfEmpty(this) {
-                    ContactsHelper(this).getContacts(showOnlyContactsWithNumbers = true) { reloaded ->
-                        gotContacts(reloaded)
-                    }
-                }
-            } else {
-                gotContacts(allContacts)
-            }
+            gotContacts(allContacts)
         }
     }
 
@@ -439,11 +448,7 @@ class MainActivity : SimpleActivity() {
         recentsHelper?.getRecentCalls(queryLimit = -1) { calls ->
             prepareCallLog(calls) { prepared ->
                 runOnUiThread {
-                    recentsState = if (debugMode && prepared.isEmpty()) {
-                        DebugContactsHelper.getSampleCallLogs()
-                    } else {
-                        prepared
-                    }
+                    recentsState = prepared
                 }
             }
         }
