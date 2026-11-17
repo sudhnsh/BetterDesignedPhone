@@ -276,8 +276,8 @@ private fun RecentCallListItem(
                     Spacer(modifier = Modifier.width(6.dp))
                     Surface(
                         shape = RoundedCornerShape(3.dp),
-                        color = Color(call.simColor).copy(alpha = 0.2f),
-                        contentColor = Color(call.simColor)
+                        color = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant
                     ) {
                         Text(
                             text = "SIM ${call.simID}",

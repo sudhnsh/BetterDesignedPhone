@@ -10,7 +10,10 @@ import android.telephony.SubscriptionManager
 import android.telephony.TelephonyManager
 import android.view.HapticFeedbackConstants
 import android.widget.Toast
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -33,6 +36,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
@@ -50,19 +54,29 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.graphics.luminance
+import org.fossify.phone.compose.theme.getNeumorphicColors
+import org.fossify.phone.compose.theme.neumorphic
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Warning
+import org.fossify.phone.activities.SettingsActivity
+import org.fossify.phone.compose.components.BarcodeCanvas
+import org.fossify.phone.extensions.config
 import androidx.core.net.toUri
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -234,7 +248,7 @@ fun DialpadScreen(
                                         text = number,
                                         highlight = dialedNumber,
                                         fontSize = 13.sp,
-                                        highlightColor = MaterialTheme.colorScheme.primary,
+                                        highlightColor = MaterialTheme.colorScheme.onSurface,
                                         color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.65f),
                                         maxLines = 1
                                     )
@@ -318,11 +332,7 @@ fun DialpadScreen(
             }
         }
 
-        HorizontalDivider(
-            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.08f),
-            thickness = 1.dp,
-            modifier = Modifier.padding(horizontal = 24.dp, vertical = 4.dp)
-        )
+        Spacer(modifier = Modifier.height(4.dp))
 
         // Keypad Grid (4 Rows x 3 Columns)
         Column(
@@ -363,15 +373,45 @@ fun DialpadScreen(
             Box(modifier = Modifier.size(56.dp))
 
             // Center: Call Button
-            Surface(
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                shadowElevation = 4.dp,
+            val neuColors = getNeumorphicColors()
+            var isCallPressed by remember { mutableStateOf(false) }
+            val callShape = CircleShape
+
+            Box(
                 modifier = Modifier
-                    .size(62.dp)
+                    .size(64.dp)
+                    .neumorphic(
+                        cornerRadius = 32.dp,
+                        lightShadowColor = neuColors.lightShadow,
+                        darkShadowColor = neuColors.darkShadow,
+                        shadowRadius = 8.dp,
+                        offset = 5.dp,
+                        isPressed = isCallPressed
+                    )
+                    .background(
+                        color = if (isCallPressed) neuColors.pressedBackground else neuColors.elementBackground,
+                        shape = callShape
+                    )
                     .pointerInput(dialedNumber) {
-                        detectTapGestures(
-                            onTap = {
+                        awaitEachGesture {
+                            val down = awaitFirstDown(requireUnconsumed = false)
+                            down.consume()
+                            isCallPressed = true
+
+                            var longPressFired = false
+                            val longPressJob = coroutineScope.launch {
+                                delay(viewConfiguration.longPressTimeoutMillis)
+                                longPressFired = true
+                                if (dialedNumber.isNotEmpty()) {
+                                    onCallWithSimSelector(dialedNumber)
+                                }
+                            }
+
+                            waitForUpOrCancellation()
+                            longPressJob.cancel()
+                            isCallPressed = false
+
+                            if (!longPressFired) {
                                 if (dialedNumber.isNotEmpty()) {
                                     onCallClick(dialedNumber, null)
                                 } else {
@@ -384,29 +424,21 @@ fun DialpadScreen(
                                         }
                                     }
                                 }
-                            },
-                            onLongPress = {
-                                if (dialedNumber.isNotEmpty()) {
-                                    onCallWithSimSelector(dialedNumber)
-                                }
                             }
-                        )
-                    }
+                        }
+                    },
+                contentAlignment = Alignment.Center
             ) {
-                Box(
-                    contentAlignment = Alignment.Center,
-                    modifier = Modifier.fillMaxSize()
-                ) {
-                    Icon(
-                        painter = painterResource(R.drawable.ic_phone_vector),
-                        contentDescription = stringResource(R.string.call_number),
-                        tint = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(28.dp)
-                    )
-                }
+                Icon(
+                    painter = painterResource(R.drawable.ic_phone_green_vector),
+                    contentDescription = stringResource(R.string.call_number),
+                    tint = Color(0xFF4CAF50),
+                    modifier = Modifier.size(30.dp)
+                )
             }
 
             // Right: Backspace Button
+            var isBackspacePressed by remember { mutableStateOf(false) }
             Box(
                 modifier = Modifier.size(56.dp),
                 contentAlignment = Alignment.Center
@@ -414,12 +446,24 @@ fun DialpadScreen(
                 if (dialedNumber.isNotEmpty()) {
                     Box(
                         modifier = Modifier
-                            .size(52.dp)
-                            .clip(CircleShape)
+                            .size(50.dp)
+                            .neumorphic(
+                                cornerRadius = 25.dp,
+                                lightShadowColor = neuColors.lightShadow,
+                                darkShadowColor = neuColors.darkShadow,
+                                shadowRadius = 6.dp,
+                                offset = 4.dp,
+                                isPressed = isBackspacePressed
+                            )
+                            .background(
+                                color = if (isBackspacePressed) neuColors.pressedBackground else neuColors.elementBackground,
+                                shape = CircleShape
+                            )
                             .pointerInput(Unit) {
                                 awaitEachGesture {
                                     val down = awaitFirstDown(requireUnconsumed = false)
                                     down.consume()
+                                    isBackspacePressed = true
 
                                     var longPressFired = false
                                     val longPressJob = coroutineScope.launch {
@@ -430,6 +474,7 @@ fun DialpadScreen(
 
                                     waitForUpOrCancellation()
                                     longPressJob.cancel()
+                                    isBackspacePressed = false
                                     if (!longPressFired) {
                                         onDeleteChar()
                                     }
@@ -441,7 +486,7 @@ fun DialpadScreen(
                             painter = painterResource(R.drawable.ic_clear_outline_vector),
                             contentDescription = "Backspace",
                             tint = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.75f),
-                            modifier = Modifier.size(26.dp)
+                            modifier = Modifier.size(24.dp)
                         )
                     }
                 }
@@ -466,19 +511,25 @@ private fun KeypadCell(
     val currentOnRelease by rememberUpdatedState(onRelease)
     val currentOnLongPress by rememberUpdatedState(onLongPress)
 
-    val backgroundColor = if (isPressed) {
-        MaterialTheme.colorScheme.primary.copy(alpha = 0.22f)
-    } else {
-        MaterialTheme.colorScheme.onSurface.copy(alpha = 0.07f)
-    }
+    val neuColors = getNeumorphicColors()
+    val cellShape = RoundedCornerShape(29.dp)
 
-    Surface(
-        shape = RoundedCornerShape(30.dp),
-        color = backgroundColor,
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(58.dp)
-            .clip(RoundedCornerShape(30.dp))
+            .neumorphic(
+                cornerRadius = 29.dp,
+                lightShadowColor = neuColors.lightShadow,
+                darkShadowColor = neuColors.darkShadow,
+                shadowRadius = 7.dp,
+                offset = 4.dp,
+                isPressed = isPressed
+            )
+            .background(
+                color = if (isPressed) neuColors.pressedBackground else neuColors.elementBackground,
+                shape = cellShape
+            )
             .pointerInput(key) {
                 awaitEachGesture {
                     val down = awaitFirstDown(requireUnconsumed = false)
@@ -496,7 +547,8 @@ private fun KeypadCell(
                     isPressed = false
                     currentOnRelease()
                 }
-            }
+            },
+        contentAlignment = Alignment.Center
     ) {
         Column(
             modifier = Modifier.fillMaxSize(),
@@ -509,15 +561,17 @@ private fun KeypadCell(
                 fontWeight = FontWeight.SemiBold,
                 color = MaterialTheme.colorScheme.onSurface
             )
-            if (key.letters.isNotEmpty()) {
-                Text(
-                    text = key.letters,
-                    fontSize = 10.sp,
-                    fontWeight = FontWeight.Medium,
-                    letterSpacing = 1.2.sp,
-                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
-                )
-            }
+            Text(
+                text = key.letters.ifEmpty { " " },
+                fontSize = 10.sp,
+                fontWeight = FontWeight.Medium,
+                letterSpacing = 1.2.sp,
+                color = if (key.letters.isNotEmpty()) {
+                    MaterialTheme.colorScheme.onSurface.copy(alpha = 0.55f)
+                } else {
+                    Color.Transparent
+                }
+            )
         }
     }
 }
@@ -529,53 +583,96 @@ private fun ImeiDialog(
 ) {
     val context = LocalContext.current
     val clipboardManager = LocalClipboardManager.current
-    val hasImei = deviceInfo.any { it.first.startsWith("IMEI") || it.first.startsWith("MEID") }
+    val config = remember { context.config }
+    val custom1 = config.customImei1.trim()
+    val custom2 = config.customImei2.trim()
+    val hasCustom = custom1.isNotEmpty() || custom2.isNotEmpty()
+
+    val barcodeItems = remember(deviceInfo, custom1, custom2) {
+        val list = mutableListOf<Triple<String, String, Boolean>>() // label, value, isUserAdded
+        if (custom1.isNotEmpty()) {
+            val label = if (custom2.isNotEmpty()) "IMEI 1" else "IMEI"
+            list.add(Triple(label, custom1, true))
+        }
+        if (custom2.isNotEmpty()) {
+            list.add(Triple("IMEI 2", custom2, true))
+        }
+
+        deviceInfo.forEach { (label, value) ->
+            if (label.startsWith("IMEI") || label.startsWith("MEID")) {
+                if (!hasCustom) {
+                    list.add(Triple(label, value, false))
+                }
+            } else {
+                list.add(Triple(label, value, false))
+            }
+        }
+        list
+    }
+
+    val hasAnyImei = hasCustom || deviceInfo.any { it.first.startsWith("IMEI") || it.first.startsWith("MEID") }
+
+    val openMobileSettings = {
+        val intent = Intent(Settings.ACTION_DEVICE_INFO_SETTINGS).apply {
+            flags = Intent.FLAG_ACTIVITY_NEW_TASK
+        }
+        try {
+            context.startActivity(intent)
+        } catch (_: Exception) {
+            try {
+                context.startActivity(Intent(Settings.ACTION_SETTINGS).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                })
+            } catch (_: Exception) {}
+        }
+    }
 
     AlertDialog(
         onDismissRequest = onDismiss,
+        shape = RoundedCornerShape(28.dp),
+        containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
         title = {
             Text(
-                text = "Device Information",
-                fontSize = 20.sp,
-                fontWeight = FontWeight.SemiBold
+                text = "Device information",
+                fontSize = 22.sp,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
             )
         },
         text = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
                     .padding(vertical = 4.dp),
-                verticalArrangement = Arrangement.spacedBy(14.dp)
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                if (!hasImei) {
+                if (!hasAnyImei) {
                     Surface(
-                        shape = RoundedCornerShape(10.dp),
+                        shape = RoundedCornerShape(12.dp),
                         color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
                         modifier = Modifier.fillMaxWidth()
                     ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
+                        Column(
+                            modifier = Modifier.padding(12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text(
-                                text = "IMEI is restricted by Android OS for third-party dialers.",
+                                text = "No custom IMEI configured. Direct hardware reading is restricted on modern Android.",
                                 fontSize = 13.sp,
                                 color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
                             )
-                            Spacer(modifier = Modifier.height(8.dp))
                             Button(
                                 onClick = {
-                                    try {
-                                        context.startActivity(Intent(Settings.ACTION_DEVICE_INFO_SETTINGS).apply {
-                                            flags = Intent.FLAG_ACTIVITY_NEW_TASK
-                                        })
-                                    } catch (_: Exception) {
-                                        Toast.makeText(context, "Could not open Settings", Toast.LENGTH_SHORT).show()
-                                    }
+                                    onDismiss()
+                                    openMobileSettings()
                                 },
                                 shape = RoundedCornerShape(8.dp),
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 Text(
-                                    text = "Open IMEI in Settings",
-                                    fontSize = 13.sp,
+                                    text = "Open Mobile Settings",
+                                    fontSize = 12.sp,
                                     fontWeight = FontWeight.SemiBold
                                 )
                             }
@@ -583,7 +680,7 @@ private fun ImeiDialog(
                     }
                 }
 
-                deviceInfo.forEach { (label, value) ->
+                barcodeItems.forEach { (label, value, _) ->
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -592,35 +689,72 @@ private fun ImeiDialog(
                                 clipboardManager.setText(AnnotatedString(value))
                                 Toast.makeText(context, "$label copied", Toast.LENGTH_SHORT).show()
                             }
-                            .padding(vertical = 2.dp)
+                            .padding(vertical = 2.dp),
+                        verticalArrangement = Arrangement.spacedBy(3.dp)
                     ) {
                         Text(
                             text = label,
-                            fontSize = 12.sp,
-                            fontWeight = FontWeight.SemiBold,
-                            color = MaterialTheme.colorScheme.primary
-                        )
-                        Spacer(modifier = Modifier.height(2.dp))
-                        Text(
-                            text = value,
                             fontSize = 15.sp,
-                            fontWeight = FontWeight.Normal,
+                            fontWeight = FontWeight.Bold,
                             color = MaterialTheme.colorScheme.onSurface
                         )
                         Text(
-                            text = "Tap to copy",
-                            fontSize = 11.sp,
-                            color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.45f)
+                            text = value,
+                            fontSize = 14.sp,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontFamily = FontFamily.Monospace
+                        )
+                        Spacer(modifier = Modifier.height(2.dp))
+                        // Clean 1D barcode matching device information standard
+                        BarcodeCanvas(
+                            code = value.substringBefore(" /").trim(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(54.dp)
                         )
                     }
+                }
+
+                if (hasCustom) {
+                    Text(
+                        text = "This barcode was added by the user. Want to see the real IMEI? Please go to Settings.",
+                        fontSize = 12.sp,
+                        fontWeight = FontWeight.Medium,
+                        color = MaterialTheme.colorScheme.error,
+                        lineHeight = 16.sp,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(6.dp))
+                            .clickable {
+                                onDismiss()
+                                openMobileSettings()
+                            }
+                            .padding(top = 4.dp, bottom = 2.dp)
+                    )
+                }
+            }
+        },
+        dismissButton = {
+            if (hasCustom) {
+                TextButton(
+                    onClick = {
+                        onDismiss()
+                        openMobileSettings()
+                    }
+                ) {
+                    Text(
+                        text = "Go to Settings",
+                        fontSize = 14.sp
+                    )
                 }
             }
         },
         confirmButton = {
             TextButton(onClick = onDismiss) {
                 Text(
-                    text = stringResource(org.fossify.commons.R.string.ok),
-                    fontWeight = FontWeight.SemiBold
+                    text = "OK",
+                    fontWeight = FontWeight.Bold,
+                    fontSize = 15.sp
                 )
             }
         }
@@ -716,10 +850,6 @@ private fun getDeviceInfo(context: Context): List<Pair<String, String>> {
         } catch (_: Exception) {
         }
     }
-
-    // Device Model & Android Version
-    list.add("Device Model" to "${Build.MANUFACTURER.replaceFirstChar { it.uppercase() }} ${Build.MODEL}")
-    list.add("Android Version" to "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})")
 
     return list
 }

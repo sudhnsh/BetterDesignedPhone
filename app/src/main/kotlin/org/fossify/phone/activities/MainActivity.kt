@@ -29,6 +29,8 @@ import org.fossify.phone.compose.screens.MainScreen
 import org.fossify.phone.compose.theme.PhoneTheme
 import org.fossify.phone.dialogs.ChangeSortingDialog
 import org.fossify.phone.dialogs.FilterContactSourcesDialog
+import org.fossify.phone.dialogs.OledScreenPromptDialog
+import org.fossify.phone.dialogs.StartupImeiDialog
 import org.fossify.phone.extensions.areMultipleSIMsAvailable
 import org.fossify.phone.extensions.clearMissedCalls
 import org.fossify.phone.extensions.config
@@ -68,12 +70,26 @@ class MainActivity : SimpleActivity() {
     private var speedDialState by mutableStateOf<List<SpeedDial>>(emptyList())
     private var dialedNumberState by mutableStateOf("")
     private var showImeiDialogState by mutableStateOf(false)
+    private var showStartupImeiDialogState by mutableStateOf(false)
+    private var showOledPromptDialogState by mutableStateOf(false)
     private var hasCallLogPermissionState by mutableStateOf(false)
     private var hasContactsPermissionState by mutableStateOf(false)
+
+    // Dynamic Theme State
+    private var isSystemThemeState by mutableStateOf(true)
+    private var customBgColorState by mutableIntStateOf(0)
+    private var oledModeState by mutableStateOf(false)
+    private var isOledScreenState by mutableStateOf(false)
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
+        isSystemThemeState = baseConfig.isSystemThemeEnabled
+        customBgColorState = baseConfig.backgroundColor
+        oledModeState = config.oledModeEnabled
+        isOledScreenState = config.isOledScreen
+        showStartupImeiDialogState = !config.hasPromptedImeiSetup
+        showOledPromptDialogState = config.hasPromptedImeiSetup && !config.hasPromptedOledConfirmation
         recentsHelper = RecentsHelper(this)
         appLaunched(BuildConfig.APPLICATION_ID)
         EventBus.getDefault().register(this)
@@ -105,7 +121,13 @@ class MainActivity : SimpleActivity() {
         handleDialIntent(intent)
 
         setContent {
-            PhoneTheme(activity = this) {
+            PhoneTheme(
+                activity = this,
+                isOledModeEnabled = oledModeState,
+                isOledScreen = isOledScreenState,
+                isSystemTheme = isSystemThemeState,
+                customBackgroundColor = customBgColorState
+            ) {
                 MainScreen(
                     initialTab = selectedTabState,
                     searchQuery = searchQueryState,
@@ -214,12 +236,37 @@ class MainActivity : SimpleActivity() {
                         launchAbout()
                     }
                 )
+
+                if (showStartupImeiDialogState) {
+                    StartupImeiDialog(
+                        onDismiss = {
+                            showStartupImeiDialogState = false
+                            if (!config.hasPromptedOledConfirmation) {
+                                showOledPromptDialogState = true
+                            }
+                        }
+                    )
+                }
+
+                if (showOledPromptDialogState) {
+                    OledScreenPromptDialog(
+                        onDismiss = {
+                            showOledPromptDialogState = false
+                            oledModeState = config.oledModeEnabled
+                            isOledScreenState = config.isOledScreen
+                        }
+                    )
+                }
             }
         }
     }
 
     override fun onResume() {
         super.onResume()
+        isSystemThemeState = baseConfig.isSystemThemeEnabled
+        customBgColorState = baseConfig.backgroundColor
+        oledModeState = config.oledModeEnabled
+        isOledScreenState = config.isOledScreen
         refreshAll()
         checkShortcuts()
     }
@@ -428,7 +475,6 @@ class MainActivity : SimpleActivity() {
         if (candidate == "*#06#") {
             dialedNumberState = ""
             showImeiDialogState = true
-            handleSpecialCode("06")
         } else if (candidate.length > 8 && candidate.startsWith("*#*#") && candidate.endsWith("#*#*")) {
             val secretCode = candidate.substring(4, candidate.length - 4)
             dialedNumberState = ""
@@ -442,7 +488,6 @@ class MainActivity : SimpleActivity() {
         if (number == "*#06#") {
             dialedNumberState = ""
             showImeiDialogState = true
-            handleSpecialCode("06")
         } else if (number.length > 8 && number.startsWith("*#*#") && number.endsWith("#*#*")) {
             val secretCode = number.substring(4, number.length - 4)
             dialedNumberState = ""
@@ -456,7 +501,6 @@ class MainActivity : SimpleActivity() {
         if (number == "*#06#") {
             dialedNumberState = ""
             showImeiDialogState = true
-            handleSpecialCode("06")
             return
         }
         if (number.isNotEmpty()) {
@@ -527,21 +571,7 @@ class MainActivity : SimpleActivity() {
     }
 
     private fun launchAbout() {
-        val licenses = LICENSE_GLIDE or LICENSE_INDICATOR_FAST_SCROLL or LICENSE_AUTOFITTEXTVIEW
-
-        val faqItems = arrayListOf(
-            FAQItem(R.string.faq_1_title, R.string.faq_1_text),
-            FAQItem(R.string.faq_2_title, R.string.faq_2_text),
-            FAQItem(R.string.faq_3_title, R.string.faq_3_text),
-            FAQItem(R.string.faq_9_title_commons, R.string.faq_9_text_commons)
-        )
-
-        if (resources.getBoolean(R.bool.is_google_play_build)) {
-            faqItems.add(FAQItem(R.string.faq_2_title_commons, R.string.faq_2_text_commons))
-            faqItems.add(FAQItem(R.string.faq_6_title_commons, R.string.faq_6_text_commons))
-        }
-
-        startAboutActivity(R.string.app_name, licenses, BuildConfig.VERSION_NAME, faqItems, true)
+        startActivity(Intent(this, AboutActivity::class.java))
     }
 
     private fun getDefaultTab(): Int {

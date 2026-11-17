@@ -20,6 +20,12 @@ const val DIALPAD_VIBRATION = "dialpad_vibration"
 const val DIALPAD_BEEPS = "dialpad_beeps"
 const val HIDE_DIALPAD_NUMBERS = "hide_dialpad_numbers"
 const val ALWAYS_SHOW_FULLSCREEN = "always_show_fullscreen"
+const val CUSTOM_IMEI_1 = "custom_imei_1"
+const val CUSTOM_IMEI_2 = "custom_imei_2"
+const val HAS_PROMPTED_IMEI_SETUP = "has_prompted_imei_setup"
+const val HAS_PROMPTED_OLED_CONFIRMATION = "has_prompted_oled_confirmation"
+const val IS_OLED_SCREEN = "is_oled_screen"
+const val OLED_MODE_ENABLED = "oled_mode_enabled"
 
 const val TAB_DIALPAD = 8
 

@@ -30,10 +30,8 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.MenuDefaults
-import androidx.compose.material3.NavigationBar
-import androidx.compose.material3.NavigationBarDefaults
-import androidx.compose.material3.NavigationBarItem
-import androidx.compose.material3.NavigationBarItemDefaults
+import org.fossify.phone.compose.components.PhoneBottomNavBar
+import org.fossify.phone.compose.components.defaultPhoneNavBarItems
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -339,119 +337,20 @@ fun MainScreen(
             }
         },
         bottomBar = {
-            NavigationBar(
-                containerColor = MaterialTheme.colorScheme.surface,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                tonalElevation = 6.dp,
-                windowInsets = NavigationBarDefaults.windowInsets
-            ) {
-                // Tab 0: Call
-                NavigationBarItem(
-                    selected = !isSearchActive && pagerState.currentPage == 0,
-                    onClick = {
+            if (!isSearchActive) {
+                val navItems = remember { defaultPhoneNavBarItems() }
+                PhoneBottomNavBar(
+                    items = navItems,
+                    selectedIndex = pagerState.currentPage,
+                    onItemSelected = { page ->
                         onSearchActiveChange(false)
                         if (searchQuery.isNotEmpty()) {
                             onSearchQueryChange("")
                         }
                         coroutineScope.launch {
-                            pagerState.animateScrollToPage(0)
+                            pagerState.animateScrollToPage(page)
                         }
-                    },
-                    icon = {
-                        Icon(
-                            painter = painterResource(
-                                if (!isSearchActive && pagerState.currentPage == 0) R.drawable.ic_clock_filled_vector else R.drawable.ic_clock_vector
-                            ),
-                            contentDescription = stringResource(R.string.tab_call),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = stringResource(R.string.tab_call),
-                            fontSize = 12.sp,
-                            fontWeight = if (!isSearchActive && pagerState.currentPage == 0) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                )
-
-                // Tab 1: Contacts
-                NavigationBarItem(
-                    selected = !isSearchActive && pagerState.currentPage == 1,
-                    onClick = {
-                        onSearchActiveChange(false)
-                        if (searchQuery.isNotEmpty()) {
-                            onSearchQueryChange("")
-                        }
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(1)
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            painter = painterResource(
-                                if (!isSearchActive && pagerState.currentPage == 1) R.drawable.ic_person_vector else R.drawable.ic_person_outline_vector
-                            ),
-                            contentDescription = stringResource(R.string.contacts_tab),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = stringResource(R.string.contacts_tab),
-                            fontSize = 12.sp,
-                            fontWeight = if (!isSearchActive && pagerState.currentPage == 1) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
-                )
-
-                // Tab 2: Keypad
-                NavigationBarItem(
-                    selected = !isSearchActive && pagerState.currentPage == 2,
-                    onClick = {
-                        onSearchActiveChange(false)
-                        if (searchQuery.isNotEmpty()) {
-                            onSearchQueryChange("")
-                        }
-                        coroutineScope.launch {
-                            pagerState.animateScrollToPage(2)
-                        }
-                    },
-                    icon = {
-                        Icon(
-                            painter = painterResource(R.drawable.ic_dialpad_vector),
-                            contentDescription = stringResource(R.string.tab_keypad),
-                            modifier = Modifier.size(24.dp)
-                        )
-                    },
-                    label = {
-                        Text(
-                            text = stringResource(R.string.tab_keypad),
-                            fontSize = 12.sp,
-                            fontWeight = if (!isSearchActive && pagerState.currentPage == 2) FontWeight.SemiBold else FontWeight.Normal
-                        )
-                    },
-                    colors = NavigationBarItemDefaults.colors(
-                        selectedIconColor = MaterialTheme.colorScheme.primary,
-                        selectedTextColor = MaterialTheme.colorScheme.primary,
-                        indicatorColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        unselectedIconColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f),
-                        unselectedTextColor = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.6f)
-                    )
+                    }
                 )
             }
         }

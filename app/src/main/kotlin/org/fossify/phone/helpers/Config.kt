@@ -142,4 +142,28 @@ class Config(context: Context) : BaseConfig(context) {
     var alwaysShowFullscreen: Boolean
         get() = prefs.getBoolean(ALWAYS_SHOW_FULLSCREEN, false)
         set(alwaysShowFullscreen) = prefs.edit().putBoolean(ALWAYS_SHOW_FULLSCREEN, alwaysShowFullscreen).apply()
+
+    var customImei1: String
+        get() = prefs.getString(CUSTOM_IMEI_1, "") ?: ""
+        set(customImei1) = prefs.edit().putString(CUSTOM_IMEI_1, customImei1).apply()
+
+    var customImei2: String
+        get() = prefs.getString(CUSTOM_IMEI_2, "") ?: ""
+        set(customImei2) = prefs.edit().putString(CUSTOM_IMEI_2, customImei2).apply()
+
+    var hasPromptedImeiSetup: Boolean
+        get() = prefs.getBoolean(HAS_PROMPTED_IMEI_SETUP, false)
+        set(hasPromptedImeiSetup) = prefs.edit().putBoolean(HAS_PROMPTED_IMEI_SETUP, hasPromptedImeiSetup).apply()
+
+    var hasPromptedOledConfirmation: Boolean
+        get() = prefs.getBoolean(HAS_PROMPTED_OLED_CONFIRMATION, false)
+        set(hasPromptedOledConfirmation) = prefs.edit().putBoolean(HAS_PROMPTED_OLED_CONFIRMATION, hasPromptedOledConfirmation).apply()
+
+    var isOledScreen: Boolean
+        get() = prefs.getBoolean(IS_OLED_SCREEN, false)
+        set(isOledScreen) = prefs.edit().putBoolean(IS_OLED_SCREEN, isOledScreen).apply()
+
+    var oledModeEnabled: Boolean
+        get() = prefs.getBoolean(OLED_MODE_ENABLED, false)
+        set(oledModeEnabled) = prefs.edit().putBoolean(OLED_MODE_ENABLED, oledModeEnabled).apply()
 }
