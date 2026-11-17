@@ -2,6 +2,7 @@ package org.fossify.phone.compose.screens
 
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -55,11 +56,6 @@ fun ContactsScreen(
     onToggleSelectContact: (Contact) -> Unit = {},
     onContactLongClick: (Contact) -> Unit = {},
     onContactClick: (Contact) -> Unit,
-    onProfileIconClick: (Contact) -> Unit,
-    onCreateContactClick: () -> Unit,
-    onRequestPermissionClick: () -> Unit,
-    modifier: Modifier = Modifier
-) {
     onProfileIconClick: (Contact) -> Unit,
     onCreateContactClick: () -> Unit,
     onRequestPermissionClick: () -> Unit,
