@@ -50,18 +50,10 @@ class CallService : InCallService() {
         }
 
         callNotificationManager.setupNotification(lowPriority)
-        if (
-            lowPriority
-            || !hasPermission(PERMISSION_POST_NOTIFICATIONS)
-            || !canUseFullScreenIntent()
-        ) {
-            try {
-                startActivity(CallActivity.getStartIntent(this))
-            } catch (_: Exception) {
-                // seems like startActivity can throw AndroidRuntimeException and
-                // ActivityNotFoundException, not yet sure when and why, lets show a notification
-                callNotificationManager.setupNotification()
-            }
+        try {
+            startActivity(CallActivity.getStartIntent(this))
+        } catch (_: Exception) {
+            callNotificationManager.setupNotification()
         }
     }
 

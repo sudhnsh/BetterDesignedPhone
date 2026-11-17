@@ -11,6 +11,7 @@ import org.fossify.commons.extensions.*
 import org.fossify.commons.helpers.REQUEST_CODE_SET_DEFAULT_DIALER
 import org.fossify.phone.R
 import org.fossify.phone.extensions.getHandleToUse
+import org.fossify.phone.extensions.isDefaultDialer
 
 class DialerActivity : SimpleActivity() {
     private var callNumber: Uri? = null

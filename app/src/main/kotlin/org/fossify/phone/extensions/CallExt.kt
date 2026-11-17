@@ -7,23 +7,34 @@ import android.telecom.PhoneAccount
 import android.telecom.PhoneAccountHandle
 import android.telecom.TelecomManager
 import org.fossify.commons.R
+import android.app.role.RoleManager
+import android.content.Context
 import org.fossify.commons.activities.BaseSimpleActivity
 import org.fossify.commons.dialogs.CallConfirmationDialog
 import org.fossify.commons.dialogs.PermissionRequiredDialog
 import org.fossify.commons.extensions.canUseFullScreenIntent
 import org.fossify.commons.extensions.initiateCall
-import org.fossify.commons.extensions.isDefaultDialer
 import org.fossify.commons.extensions.openFullScreenIntentSettings
 import org.fossify.commons.extensions.openNotificationSettings
 import org.fossify.commons.extensions.showErrorToast
 import org.fossify.commons.extensions.telecomManager
 import org.fossify.commons.helpers.PERMISSION_CALL_PHONE
 import org.fossify.commons.helpers.PERMISSION_READ_PHONE_STATE
+import org.fossify.commons.helpers.isQPlus
 import org.fossify.commons.models.contacts.Contact
 import org.fossify.phone.BuildConfig
 import org.fossify.phone.activities.DialerActivity
 import org.fossify.phone.activities.SimpleActivity
 import org.fossify.phone.dialogs.SelectSIMDialog
+
+fun Context.isDefaultDialer(): Boolean {
+    return if (isQPlus()) {
+        val roleManager = getSystemService(RoleManager::class.java)
+        roleManager?.isRoleHeld(RoleManager.ROLE_DIALER) == true
+    } else {
+        telecomManager.defaultDialerPackage == packageName
+    }
+}
 
 fun BaseSimpleActivity.launchCallIntent(recipient: String, handle: PhoneAccountHandle? = null) {
     handlePermission(PERMISSION_CALL_PHONE) { hasPermission ->

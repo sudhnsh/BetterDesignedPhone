@@ -34,6 +34,7 @@ import org.fossify.phone.dialogs.StartupImeiDialog
 import org.fossify.phone.extensions.areMultipleSIMsAvailable
 import org.fossify.phone.extensions.clearMissedCalls
 import org.fossify.phone.extensions.config
+import org.fossify.phone.extensions.isDefaultDialer
 import org.fossify.phone.extensions.handleFullScreenNotificationsPermission
 import org.fossify.phone.extensions.handleGenericContactClick
 import org.fossify.phone.extensions.launchCreateNewContactIntent
